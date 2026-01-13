@@ -110,10 +110,38 @@ const api = {
   },
 
   // Admin
-  async createInvite(email) {
+  async createInvite(email, maxUses = 1) {
     return this.request('/admin/invites', {
       method: 'POST',
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, maxUses })
+    });
+  },
+
+  async getInvites() {
+    return this.request('/admin/invites');
+  },
+
+  async getUsers() {
+    return this.request('/admin/users');
+  },
+
+  async createUser(userData) {
+    return this.request('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    });
+  },
+
+  async updateUserRole(userId, role) {
+    return this.request(`/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role })
+    });
+  },
+
+  async deleteUser(userId) {
+    return this.request(`/admin/users/${userId}`, {
+      method: 'DELETE'
     });
   }
 };
@@ -986,16 +1014,43 @@ function toggleDeafen() {
 async function toggleCamera() {
   if (!state.isCameraOn) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
+        audio: false
+      });
+      state.localStream = stream;
       state.isCameraOn = true;
-      state.socket.emit('camera:toggle', true);
-      // Add video tracks to peer connections
+
+      if (state.socket) {
+        state.socket.emit('camera:toggle', true);
+      }
+
+      // Add video to grid
+      addVideoToGrid('local-camera', stream, state.user?.displayName || 'You', true);
+
+      showToast('Camera enabled', 'success');
+      render();
     } catch (error) {
-      showToast('Could not access camera', 'error');
+      console.error('Camera error:', error);
+      showToast('Could not access camera: ' + error.message, 'error');
     }
   } else {
+    // Stop camera
+    if (state.localStream) {
+      state.localStream.getTracks().forEach(track => track.stop());
+      state.localStream = null;
+    }
     state.isCameraOn = false;
-    state.socket.emit('camera:toggle', false);
+
+    if (state.socket) {
+      state.socket.emit('camera:toggle', false);
+    }
+
+    // Remove video from grid
+    removeVideoFromGrid('local-camera');
+
+    showToast('Camera disabled', 'success');
+    render();
   }
 }
 
@@ -1008,18 +1063,32 @@ async function toggleScreenShare() {
       });
 
       state.isScreenSharing = true;
-      state.socket.emit('screen:start');
 
+      if (state.socket) {
+        state.socket.emit('screen:start');
+      }
+
+      // Add screen share to grid
+      addVideoToGrid('local-screen', state.screenStream, 'Your Screen', false);
+
+      // Handle user stopping share via browser UI
       state.screenStream.getVideoTracks()[0].onended = () => {
         state.isScreenSharing = false;
         state.screenStream = null;
-        state.socket.emit('screen:stop');
+        removeVideoFromGrid('local-screen');
+        if (state.socket) {
+          state.socket.emit('screen:stop');
+        }
+        showToast('Screen sharing stopped', 'info');
+        render();
       };
 
       showToast('Screen sharing started', 'success');
+      render();
     } catch (error) {
       if (error.name !== 'AbortError') {
-        showToast('Could not share screen', 'error');
+        console.error('Screen share error:', error);
+        showToast('Could not share screen: ' + error.message, 'error');
       }
     }
   } else {
@@ -1028,8 +1097,51 @@ async function toggleScreenShare() {
       state.screenStream = null;
     }
     state.isScreenSharing = false;
-    state.socket.emit('screen:stop');
+
+    if (state.socket) {
+      state.socket.emit('screen:stop');
+    }
+
+    removeVideoFromGrid('local-screen');
     showToast('Screen sharing stopped', 'success');
+    render();
+  }
+}
+
+// Add video element to the video grid
+function addVideoToGrid(id, stream, label, isMirrored = false) {
+  const grid = document.getElementById('videoGrid');
+  if (!grid) return;
+
+  // Remove existing element if present
+  removeVideoFromGrid(id);
+
+  const tile = document.createElement('div');
+  tile.className = 'video-tile';
+  tile.id = `video-tile-${id}`;
+  tile.innerHTML = `
+    <video id="video-${id}" autoplay playsinline ${isMirrored ? 'style="transform: scaleX(-1);"' : ''}></video>
+    <div class="video-label">${escapeHtml(label)}</div>
+  `;
+
+  grid.appendChild(tile);
+
+  const video = document.getElementById(`video-${id}`);
+  if (video) {
+    video.srcObject = stream;
+    video.muted = true; // Mute local playback to prevent echo
+  }
+}
+
+// Remove video element from the grid
+function removeVideoFromGrid(id) {
+  const tile = document.getElementById(`video-tile-${id}`);
+  if (tile) {
+    const video = tile.querySelector('video');
+    if (video) {
+      video.srcObject = null;
+    }
+    tile.remove();
   }
 }
 
@@ -1204,8 +1316,12 @@ function openSettings() {
 
       ${state.user?.role === 'admin' || state.user?.role === 'superadmin' ? `
       <div class="settings-section">
-        <h3>Admin</h3>
-        <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
+        <h3>Administration</h3>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
+          <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
+          <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+        </div>
       </div>
       ` : ''}
     </div>
@@ -1232,6 +1348,183 @@ async function saveSettings() {
     render();
   } catch (error) {
     showToast('Failed to save settings', 'error');
+  }
+}
+
+// ===== Admin Panel Functions =====
+function openInviteModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Create Invite</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Email (optional)</label>
+        <input type="email" id="inviteEmail" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <small style="color: var(--text-muted);">Leave blank to generate a link without sending email</small>
+      </div>
+      <div class="form-group">
+        <label>Max Uses</label>
+        <input type="number" id="inviteMaxUses" value="1" min="1" max="100" style="width: 100px; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div id="inviteResult" style="display: none; margin-top: 16px; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+        <label style="font-size: 12px; color: var(--text-muted);">Invite Code:</label>
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <input type="text" id="inviteCode" readonly style="flex: 1; padding: 8px; background: var(--bg-medium); border: 1px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--accent-primary); font-family: monospace;">
+          <button class="btn-secondary" onclick="copyInviteCode()">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+      <button class="btn-primary" onclick="createInvite()">Generate Invite</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function createInvite() {
+  const email = document.getElementById('inviteEmail').value;
+  const maxUses = parseInt(document.getElementById('inviteMaxUses').value) || 1;
+
+  try {
+    const result = await api.createInvite(email || null, maxUses);
+    document.getElementById('inviteCode').value = result.invite?.code || result.code;
+    document.getElementById('inviteResult').style.display = 'block';
+    showToast('Invite created!', 'success');
+  } catch (error) {
+    showToast('Failed to create invite: ' + error.message, 'error');
+  }
+}
+
+function copyInviteCode() {
+  const code = document.getElementById('inviteCode');
+  code.select();
+  document.execCommand('copy');
+  showToast('Invite code copied!', 'success');
+}
+
+function openCreateUserModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Create User</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="newUsername" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="newEmail" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="newPassword" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="newRole" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <option value="user">User</option>
+          <option value="moderator">Moderator</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function createUser() {
+  const username = document.getElementById('newUsername').value;
+  const email = document.getElementById('newEmail').value;
+  const password = document.getElementById('newPassword').value;
+  const role = document.getElementById('newRole').value;
+
+  if (!username || !email || !password) {
+    showToast('Please fill in all fields', 'error');
+    return;
+  }
+
+  try {
+    await api.createUser({ username, email, password, role });
+    showToast('User created successfully!', 'success');
+    closeModal();
+  } catch (error) {
+    showToast('Failed to create user: ' + error.message, 'error');
+  }
+}
+
+async function openAdminPanel() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>User Management</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+      <div id="adminUserList">Loading users...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  // Load users
+  try {
+    const data = await api.getUsers();
+    const users = data.users || [];
+
+    const userListHtml = users.map(user => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: ${getRoleColor(user.role)}; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+          ${user.username.charAt(0).toUpperCase()}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 500;">${escapeHtml(user.displayName || user.username)}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">@${escapeHtml(user.username)} • ${user.role}</div>
+        </div>
+        ${user._id !== state.user._id ? `
+          <select onchange="updateUserRole('${user._id}', this.value)" style="padding: 6px; background: var(--bg-medium); border: 1px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
+            <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
+            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        ` : '<span style="color: var(--text-muted); font-size: 12px;">You</span>'}
+      </div>
+    `).join('');
+
+    document.getElementById('adminUserList').innerHTML = userListHtml || '<p style="color: var(--text-muted);">No users found</p>';
+  } catch (error) {
+    document.getElementById('adminUserList').innerHTML = `<p style="color: var(--danger);">Failed to load users: ${error.message}</p>`;
+  }
+}
+
+async function updateUserRole(userId, role) {
+  try {
+    await api.updateUserRole(userId, role);
+    showToast('User role updated', 'success');
+  } catch (error) {
+    showToast('Failed to update role: ' + error.message, 'error');
+    openAdminPanel(); // Refresh the list
   }
 }
 
@@ -1791,13 +2084,35 @@ function addStyles() {
 
     .voice-panel-content { flex: 1; overflow-y: auto; padding: 12px; }
 
-    .video-grid { display: grid; gap: 8px; margin-bottom: 12px; }
+    .video-grid {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
     .video-tile {
       position: relative;
       background: var(--bg-darkest);
       border-radius: var(--radius-md);
       overflow: hidden;
       aspect-ratio: 16/9;
+      min-height: 150px;
+    }
+    .video-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .video-tile .video-label {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+      color: white;
     }
 
     .voice-participants h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }

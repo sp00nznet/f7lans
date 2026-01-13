@@ -72,6 +72,7 @@ router.get('/channels/:channelId/pinned', authenticate, channelController.getPin
 
 // ===== Admin Routes =====
 router.get('/admin/users', authenticate, adminOnly, adminController.getAllUsers);
+router.post('/admin/users', authenticate, adminOnly, adminController.createUser);
 router.put('/admin/users/:userId/role', authenticate, adminOnly, adminController.updateUserRole);
 router.put('/admin/users/:userId/ban', authenticate, adminOnly, adminController.toggleUserBan);
 router.get('/admin/invites', authenticate, adminOnly, adminController.getInvites);
