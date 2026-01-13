@@ -1,0 +1,86 @@
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const { authenticate, adminOnly } = require('../middleware/auth');
+const authController = require('../controllers/authController');
+const adminController = require('../controllers/adminController');
+const channelController = require('../controllers/channelController');
+const userController = require('../controllers/userController');
+
+const router = express.Router();
+
+// Multer config for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../uploads/avatars'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.user._id}-${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype;
+    if (allowed.test(ext) && allowed.test(mime)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// ===== Auth Routes =====
+router.post('/auth/register', authController.register);
+router.post('/auth/login', authController.login);
+router.get('/auth/me', authenticate, authController.getMe);
+router.put('/auth/profile', authenticate, authController.updateProfile);
+router.put('/auth/password', authenticate, authController.changePassword);
+router.post('/auth/logout', authenticate, authController.logout);
+
+// ===== User Routes =====
+router.get('/users/:userId', authenticate, userController.getProfile);
+router.post('/users/avatar', authenticate, upload.single('avatar'), userController.uploadAvatar);
+router.get('/users/:userId/common-games', authenticate, userController.getCommonGames);
+
+// Friends
+router.post('/users/:userId/friend-request', authenticate, userController.sendFriendRequest);
+router.post('/users/:userId/friend-accept', authenticate, userController.acceptFriendRequest);
+router.post('/users/:userId/friend-decline', authenticate, userController.declineFriendRequest);
+router.delete('/users/:userId/friend', authenticate, userController.removeFriend);
+router.post('/users/:userId/block', authenticate, userController.blockUser);
+router.delete('/users/:userId/block', authenticate, userController.unblockUser);
+
+// Direct Messages
+router.get('/dm/conversations', authenticate, userController.getConversations);
+router.get('/dm/:userId', authenticate, userController.getDirectMessages);
+
+// ===== Channel Routes =====
+router.get('/channels', authenticate, channelController.getChannels);
+router.get('/channels/:channelId', authenticate, channelController.getChannel);
+router.post('/channels', authenticate, adminOnly, channelController.createChannel);
+router.put('/channels/:channelId', authenticate, adminOnly, channelController.updateChannel);
+router.delete('/channels/:channelId', authenticate, adminOnly, channelController.deleteChannel);
+router.get('/channels/:channelId/messages', authenticate, channelController.getMessages);
+router.get('/channels/:channelId/pinned', authenticate, channelController.getPinnedMessages);
+
+// ===== Admin Routes =====
+router.get('/admin/users', authenticate, adminOnly, adminController.getAllUsers);
+router.put('/admin/users/:userId/role', authenticate, adminOnly, adminController.updateUserRole);
+router.put('/admin/users/:userId/ban', authenticate, adminOnly, adminController.toggleUserBan);
+router.get('/admin/invites', authenticate, adminOnly, adminController.getInvites);
+router.post('/admin/invites', authenticate, adminOnly, adminController.createInvite);
+router.delete('/admin/invites/:inviteId', authenticate, adminOnly, adminController.deleteInvite);
+router.get('/admin/stats', authenticate, adminOnly, adminController.getStats);
+
+// Health check
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+module.exports = router;

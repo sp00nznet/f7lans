@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dmg
+*.AppImage
+
+# Uploads
+server/uploads/avatars/*
+!server/uploads/avatars/.gitkeep
+
+# SSL certificates
+docker/ssl/*.pem
+docker/ssl/*.crt
+docker/ssl/*.key
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
