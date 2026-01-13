@@ -986,16 +986,43 @@ function toggleDeafen() {
 async function toggleCamera() {
   if (!state.isCameraOn) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
+        audio: false
+      });
+      state.localStream = stream;
       state.isCameraOn = true;
-      state.socket.emit('camera:toggle', true);
-      // Add video tracks to peer connections
+
+      if (state.socket) {
+        state.socket.emit('camera:toggle', true);
+      }
+
+      // Add video to grid
+      addVideoToGrid('local-camera', stream, state.user?.displayName || 'You', true);
+
+      showToast('Camera enabled', 'success');
+      render();
     } catch (error) {
-      showToast('Could not access camera', 'error');
+      console.error('Camera error:', error);
+      showToast('Could not access camera: ' + error.message, 'error');
     }
   } else {
+    // Stop camera
+    if (state.localStream) {
+      state.localStream.getTracks().forEach(track => track.stop());
+      state.localStream = null;
+    }
     state.isCameraOn = false;
-    state.socket.emit('camera:toggle', false);
+
+    if (state.socket) {
+      state.socket.emit('camera:toggle', false);
+    }
+
+    // Remove video from grid
+    removeVideoFromGrid('local-camera');
+
+    showToast('Camera disabled', 'success');
+    render();
   }
 }
 
@@ -1008,18 +1035,32 @@ async function toggleScreenShare() {
       });
 
       state.isScreenSharing = true;
-      state.socket.emit('screen:start');
 
+      if (state.socket) {
+        state.socket.emit('screen:start');
+      }
+
+      // Add screen share to grid
+      addVideoToGrid('local-screen', state.screenStream, 'Your Screen', false);
+
+      // Handle user stopping share via browser UI
       state.screenStream.getVideoTracks()[0].onended = () => {
         state.isScreenSharing = false;
         state.screenStream = null;
-        state.socket.emit('screen:stop');
+        removeVideoFromGrid('local-screen');
+        if (state.socket) {
+          state.socket.emit('screen:stop');
+        }
+        showToast('Screen sharing stopped', 'info');
+        render();
       };
 
       showToast('Screen sharing started', 'success');
+      render();
     } catch (error) {
       if (error.name !== 'AbortError') {
-        showToast('Could not share screen', 'error');
+        console.error('Screen share error:', error);
+        showToast('Could not share screen: ' + error.message, 'error');
       }
     }
   } else {
@@ -1028,8 +1069,51 @@ async function toggleScreenShare() {
       state.screenStream = null;
     }
     state.isScreenSharing = false;
-    state.socket.emit('screen:stop');
+
+    if (state.socket) {
+      state.socket.emit('screen:stop');
+    }
+
+    removeVideoFromGrid('local-screen');
     showToast('Screen sharing stopped', 'success');
+    render();
+  }
+}
+
+// Add video element to the video grid
+function addVideoToGrid(id, stream, label, isMirrored = false) {
+  const grid = document.getElementById('videoGrid');
+  if (!grid) return;
+
+  // Remove existing element if present
+  removeVideoFromGrid(id);
+
+  const tile = document.createElement('div');
+  tile.className = 'video-tile';
+  tile.id = `video-tile-${id}`;
+  tile.innerHTML = `
+    <video id="video-${id}" autoplay playsinline ${isMirrored ? 'style="transform: scaleX(-1);"' : ''}></video>
+    <div class="video-label">${escapeHtml(label)}</div>
+  `;
+
+  grid.appendChild(tile);
+
+  const video = document.getElementById(`video-${id}`);
+  if (video) {
+    video.srcObject = stream;
+    video.muted = true; // Mute local playback to prevent echo
+  }
+}
+
+// Remove video element from the grid
+function removeVideoFromGrid(id) {
+  const tile = document.getElementById(`video-tile-${id}`);
+  if (tile) {
+    const video = tile.querySelector('video');
+    if (video) {
+      video.srcObject = null;
+    }
+    tile.remove();
   }
 }
 
@@ -1791,13 +1875,35 @@ function addStyles() {
 
     .voice-panel-content { flex: 1; overflow-y: auto; padding: 12px; }
 
-    .video-grid { display: grid; gap: 8px; margin-bottom: 12px; }
+    .video-grid {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
     .video-tile {
       position: relative;
       background: var(--bg-darkest);
       border-radius: var(--radius-md);
       overflow: hidden;
       aspect-ratio: 16/9;
+      min-height: 150px;
+    }
+    .video-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .video-tile .video-label {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+      color: white;
     }
 
     .voice-participants h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
