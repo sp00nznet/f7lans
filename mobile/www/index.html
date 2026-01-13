@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws: wss: http: https:; script-src 'self' 'unsafe-inline' https://cdn.socket.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <title>F7Lans</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Mobile Meta Tags -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0a0a0f">
+    <!-- Capacitor -->
+    <script src="capacitor.js"></script>
+    </head>
+<body>
+    <div id="app">
+        <!-- Connection Screen -->
+        <div id="connectionScreen" class="connection-screen">
+            <div class="connection-card">
+                <div class="logo">
+                    <div class="logo-icon">F7</div>
+                    <h1>F7Lans</h1>
+                    <p>Desktop Client</p>
+                </div>
+
+                <form id="connectionForm" class="connection-form">
+                    <div class="form-group">
+                        <label>Server Address</label>
+                        <input type="text" id="serverUrl" placeholder="http://localhost:3001" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="username" placeholder="Enter username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Enter password" required>
+                    </div>
+                    <div class="form-group checkbox">
+                        <label>
+                            <input type="checkbox" id="rememberMe" checked>
+                            Remember me
+                        </label>
+                    </div>
+                    <button type="submit" class="btn-primary">Connect</button>
+                    <div class="error-message" id="errorMessage"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main App (hidden until connected) -->
+        <div id="mainApp" class="main-app" style="display: none;">
+            <!-- Will be populated by app.js -->
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="app.js"></script>
+    <script src="mobile.js"></script>
+</body>
+</html>

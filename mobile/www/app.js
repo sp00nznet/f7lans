@@ -86,8 +86,8 @@ const state = {
 // Initialize application
 async function init() {
   // Load settings from electron store
-  if (window.electronAPI) {
-    state.settings = await window.electronAPI.getSettings();
+  if (window.mobileAPI) {
+    state.settings = await window.mobileAPI.getSettings();
     state.serverUrl = state.settings.serverUrl;
     state.token = state.settings.token;
     state.servers = state.settings.servers || [];
@@ -168,15 +168,15 @@ function setupPTTKeyboard() {
 
 // Set up IPC listeners from main process
 function setupIPCListeners() {
-  window.electronAPI.onToggleMute(() => {
+  window.mobileAPI.onToggleMute(() => {
     toggleMute();
   });
 
-  window.electronAPI.onToggleDeafen(() => {
+  window.mobileAPI.onToggleDeafen(() => {
     toggleDeafen();
   });
 
-  window.electronAPI.onPTTStart(() => {
+  window.mobileAPI.onPTTStart(() => {
     if (!state.settings.voiceActivated && state.inVoice && state.isMuted) {
       state.isPTTActive = true;
       if (state.localStream) {
@@ -186,7 +186,7 @@ function setupIPCListeners() {
     }
   });
 
-  window.electronAPI.onPTTEnd(() => {
+  window.mobileAPI.onPTTEnd(() => {
     if (state.isPTTActive) {
       state.isPTTActive = false;
       if (state.localStream && state.isMuted) {
@@ -196,7 +196,7 @@ function setupIPCListeners() {
     }
   });
 
-  window.electronAPI.onOpenSettings(() => {
+  window.mobileAPI.onOpenSettings(() => {
     openSettings();
   });
 }
@@ -215,8 +215,8 @@ async function tryAutoLogin() {
       connectSocket();
     } else {
       // Token invalid, clear it
-      if (window.electronAPI) {
-        await window.electronAPI.clearToken();
+      if (window.mobileAPI) {
+        await window.mobileAPI.clearToken();
       }
       state.token = null;
     }
@@ -263,9 +263,9 @@ async function handleConnect(e) {
     state.token = data.token;
     state.serverUrl = cleanUrl;
 
-    if (window.electronAPI && rememberMe) {
-      await window.electronAPI.saveToken(data.token);
-      await window.electronAPI.setServerUrl(cleanUrl);
+    if (window.mobileAPI && rememberMe) {
+      await window.mobileAPI.saveToken(data.token);
+      await window.mobileAPI.setServerUrl(cleanUrl);
     }
 
     // Show main app
@@ -273,8 +273,8 @@ async function handleConnect(e) {
     connectSocket();
 
     // Update tray
-    if (window.electronAPI) {
-      window.electronAPI.updateTrayStatus('Online');
+    if (window.mobileAPI) {
+      window.mobileAPI.updateTrayStatus('Online');
     }
 
   } catch (error) {
@@ -300,8 +300,8 @@ function connectSocket() {
 
   state.socket.on('disconnect', () => {
     showToast('Disconnected from server', 'warning');
-    if (window.electronAPI) {
-      window.electronAPI.updateTrayStatus('Disconnected');
+    if (window.mobileAPI) {
+      window.mobileAPI.updateTrayStatus('Disconnected');
     }
   });
 
@@ -318,10 +318,10 @@ function connectSocket() {
     }
 
     // Desktop notification if window not focused
-    if (window.electronAPI && document.hidden) {
+    if (window.mobileAPI && document.hidden) {
       const author = message.author.displayName || message.author.username;
-      window.electronAPI.showNotification(`${author} in #${state.currentChannel?.name || 'channel'}`, message.content.substring(0, 100));
-      window.electronAPI.flashWindow();
+      window.mobileAPI.showNotification(`${author} in #${state.currentChannel?.name || 'channel'}`, message.content.substring(0, 100));
+      window.mobileAPI.flashWindow();
     }
   });
 
@@ -1099,8 +1099,8 @@ async function joinVoice(channelId) {
     updateVoiceUI();
     showToast(`Joined ${channel.name}`, 'success');
 
-    if (window.electronAPI) {
-      window.electronAPI.updateTrayStatus(`In voice: ${channel.name}`);
+    if (window.mobileAPI) {
+      window.mobileAPI.updateTrayStatus(`In voice: ${channel.name}`);
     }
   } catch (error) {
     showToast('Could not access microphone', 'error');
@@ -1128,8 +1128,8 @@ function leaveVoice() {
 
   showToast('Left voice channel', 'success');
 
-  if (window.electronAPI) {
-    window.electronAPI.updateTrayStatus('Online');
+  if (window.mobileAPI) {
+    window.mobileAPI.updateTrayStatus('Online');
   }
 }
 
@@ -1221,9 +1221,9 @@ async function toggleCamera() {
 
 async function toggleScreenShare() {
   // Always allow adding more screen shares - show picker
-  if (window.electronAPI && window.electronAPI.getScreenSources) {
+  if (window.mobileAPI && window.mobileAPI.getScreenSources) {
     try {
-      const sources = await window.electronAPI.getScreenSources();
+      const sources = await window.mobileAPI.getScreenSources();
       openScreenPickerModal(sources);
     } catch (error) {
       console.error('Failed to get screen sources:', error);
@@ -1931,8 +1931,8 @@ async function saveSettings() {
 
   state.settings = { ...state.settings, ...newSettings };
 
-  if (window.electronAPI) {
-    await window.electronAPI.saveSettings(newSettings);
+  if (window.mobileAPI) {
+    await window.mobileAPI.saveSettings(newSettings);
   }
 
   // Save profile updates
@@ -4940,9 +4940,9 @@ async function loadUserFileShareContent() {
 }
 
 async function selectFolderToShare() {
-  if (window.electronAPI && window.electronAPI.selectFolder) {
+  if (window.mobileAPI && window.mobileAPI.selectFolder) {
     try {
-      const result = await window.electronAPI.selectFolder();
+      const result = await window.mobileAPI.selectFolder();
       if (result && result.path) {
         await shareSelectedFolder(result.path, result.name || result.path.split(/[/\\]/).pop());
       }
@@ -5107,8 +5107,8 @@ function disconnect() {
     state.socket.disconnect();
   }
 
-  if (window.electronAPI) {
-    window.electronAPI.clearToken();
+  if (window.mobileAPI) {
+    window.mobileAPI.clearToken();
   }
 
   state.user = null;
@@ -5363,10 +5363,10 @@ async function removeServer(serverId) {
 }
 
 async function saveServers() {
-  if (window.electronAPI) {
-    const settings = await window.electronAPI.getSettings();
+  if (window.mobileAPI) {
+    const settings = await window.mobileAPI.getSettings();
     settings.servers = state.servers;
-    await window.electronAPI.saveSettings(settings);
+    await window.mobileAPI.saveSettings(settings);
   }
 }
 
@@ -5489,10 +5489,10 @@ function applyTheme(themeName) {
 async function setTheme(themeName) {
   applyTheme(themeName);
 
-  if (window.electronAPI) {
-    const settings = await window.electronAPI.getSettings();
+  if (window.mobileAPI) {
+    const settings = await window.mobileAPI.getSettings();
     settings.theme = themeName;
-    await window.electronAPI.saveSettings(settings);
+    await window.mobileAPI.saveSettings(settings);
   }
 
   showToast(`Theme changed to ${themes[themeName]?.name || themeName}`, 'success');

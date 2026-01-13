@@ -1172,3 +1172,67 @@ body {
 .message-attachment:hover {
   opacity: 0.9;
 }
+
+/* Context Menu */
+.context-menu {
+  background: var(--bg-medium);
+  border: 1px solid var(--bg-lighter);
+  border-radius: var(--radius-md);
+  padding: 6px 0;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-light);
+  color: var(--text-primary);
+}
+
+.context-menu-item.danger {
+  color: var(--danger);
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(255, 92, 138, 0.15);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--bg-lighter);
+  margin: 6px 0;
+}
+
+/* Add Channel Button */
+.add-channel-btn {
+  margin-left: auto;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.add-channel-btn:hover {
+  background: var(--bg-lighter);
+  color: var(--text-primary);
+}
+
+.channel-category {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
