@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, desktopCapturer } = require('electron');
 
 // Expose secure APIs to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -27,6 +27,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPTTStart: (callback) => ipcRenderer.on('ptt-start', callback),
   onPTTEnd: (callback) => ipcRenderer.on('ptt-end', callback),
   onOpenSettings: (callback) => ipcRenderer.on('open-settings', callback),
+
+  // Screen sharing - get available sources
+  getScreenSources: async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 180 },
+      fetchWindowIcons: true
+    });
+    return sources.map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnail: source.thumbnail.toDataURL(),
+      appIcon: source.appIcon ? source.appIcon.toDataURL() : null,
+      display_id: source.display_id
+    }));
+  },
 
   // Platform info
   platform: process.platform,

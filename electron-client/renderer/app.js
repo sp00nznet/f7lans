@@ -18,8 +18,14 @@ const state = {
   isScreenSharing: false,
   isPTTActive: false,
   localStream: null,
+  cameraStream: null,
   screenStream: null,
-  settings: {}
+  settings: {},
+  devices: {
+    audioInputs: [],
+    audioOutputs: [],
+    videoInputs: []
+  }
 };
 
 // Initialize application
@@ -376,6 +382,7 @@ function renderMainApp() {
         <button class="header-btn">⛶</button>
       </div>
       <div class="voice-panel-content">
+        <div id="videoGrid" class="video-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px;"></div>
         <div class="voice-participants">
           <h4>In Voice — <span id="participantCount">0</span></h4>
           <div id="participantsList"></div>
@@ -565,11 +572,19 @@ async function joinVoice(channelId) {
   if (!channel) return;
 
   try {
+    // Use selected audio input device if configured
+    const audioInputDevice = state.settings.audioInputDevice || undefined;
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true
+    };
+
+    if (audioInputDevice) {
+      audioConstraints.deviceId = { exact: audioInputDevice };
+    }
+
     state.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true
-      }
+      audio: audioConstraints
     });
 
     // Apply initial mute state
@@ -659,11 +674,18 @@ function toggleDeafen() {
 async function toggleCamera() {
   if (!state.isCameraOn) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' },
+      // Get the selected camera device or use default
+      const cameraDeviceId = state.settings.cameraDevice || undefined;
+
+      const constraints = {
+        video: cameraDeviceId
+          ? { deviceId: { exact: cameraDeviceId }, width: 640, height: 480 }
+          : { width: 640, height: 480, facingMode: 'user' },
         audio: false
-      });
-      state.localStream = stream;
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      state.cameraStream = stream;
       state.isCameraOn = true;
 
       if (state.socket && state.inVoice) {
@@ -676,13 +698,19 @@ async function toggleCamera() {
       showToast('Camera enabled', 'success');
     } catch (error) {
       console.error('Camera error:', error);
-      showToast('Could not access camera: ' + error.message, 'error');
+      if (error.name === 'NotAllowedError') {
+        showToast('Camera access denied. Please allow camera access in your system settings.', 'error');
+      } else if (error.name === 'NotFoundError') {
+        showToast('No camera found. Please connect a camera.', 'error');
+      } else {
+        showToast('Could not access camera: ' + error.message, 'error');
+      }
     }
   } else {
     // Stop camera
-    if (state.localStream) {
-      state.localStream.getTracks().forEach(track => track.stop());
-      state.localStream = null;
+    if (state.cameraStream) {
+      state.cameraStream.getTracks().forEach(track => track.stop());
+      state.cameraStream = null;
     }
     state.isCameraOn = false;
 
@@ -701,53 +729,136 @@ async function toggleCamera() {
 
 async function toggleScreenShare() {
   if (!state.isScreenSharing) {
-    try {
-      state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1920, height: 1080, frameRate: 30 },
-        audio: true
-      });
-
-      state.isScreenSharing = true;
-
-      if (state.socket) {
-        state.socket.emit('screen:start');
+    // In Electron, use desktopCapturer API via preload
+    if (window.electronAPI && window.electronAPI.getScreenSources) {
+      try {
+        const sources = await window.electronAPI.getScreenSources();
+        openScreenPickerModal(sources);
+      } catch (error) {
+        console.error('Failed to get screen sources:', error);
+        showToast('Could not get screen sources: ' + error.message, 'error');
       }
-
-      // Add screen share to grid
-      addVideoToGrid('local-screen', state.screenStream, 'Your Screen', false);
-
-      // Handle user stopping share via browser UI
-      state.screenStream.getVideoTracks()[0].onended = () => {
-        state.isScreenSharing = false;
-        state.screenStream = null;
-        removeVideoFromGrid('local-screen');
-        if (state.socket) state.socket.emit('screen:stop');
-        showToast('Screen sharing stopped', 'info');
-        updateVoiceUI();
-      };
-
-      showToast('Screen sharing started', 'success');
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Screen share error:', error);
-        showToast('Could not share screen: ' + error.message, 'error');
+    } else {
+      // Fallback for web (browser) - use getDisplayMedia
+      try {
+        state.screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { width: 1920, height: 1080, frameRate: 30 },
+          audio: true
+        });
+        startScreenShare(state.screenStream);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Screen share error:', error);
+          showToast('Could not share screen: ' + error.message, 'error');
+        }
       }
     }
   } else {
-    if (state.screenStream) {
-      state.screenStream.getTracks().forEach(t => t.stop());
-      state.screenStream = null;
-    }
-    state.isScreenSharing = false;
+    stopScreenShare();
+  }
+}
 
-    if (state.socket) {
-      state.socket.emit('screen:stop');
-    }
+// Show screen picker modal for Electron
+function openScreenPickerModal(sources) {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
 
-    removeVideoFromGrid('local-screen');
-    showToast('Screen sharing stopped', 'success');
+  const sourcesHtml = sources.map(source => `
+    <div class="screen-source" onclick="selectScreenSource('${source.id}')"
+         style="cursor: pointer; padding: 8px; border-radius: 8px; background: var(--bg-dark); text-align: center; transition: all 0.2s;">
+      <img src="${source.thumbnail}" alt="${escapeHtml(source.name)}"
+           style="width: 100%; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent;">
+      <div style="font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        ${escapeHtml(source.name)}
+      </div>
+    </div>
+  `).join('');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Share Your Screen</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Select a screen or window to share:</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+        ${sourcesHtml}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+
+  // Add hover effect
+  const style = document.createElement('style');
+  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover img { border-color: var(--accent-primary) !important; }`;
+  modal.appendChild(style);
+
+  overlay.classList.add('active');
+}
+
+// Select a screen source from the picker
+async function selectScreenSource(sourceId) {
+  closeModal();
+
+  try {
+    // Use the selected source with getUserMedia (Electron way)
+    state.screenStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        mandatory: {
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: sourceId,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          maxFrameRate: 30
+        }
+      }
+    });
+
+    startScreenShare(state.screenStream);
+  } catch (error) {
+    console.error('Failed to start screen share:', error);
+    showToast('Could not share screen: ' + error.message, 'error');
+  }
+}
+
+// Start screen sharing with a stream
+function startScreenShare(stream) {
+  state.screenStream = stream;
+  state.isScreenSharing = true;
+
+  if (state.socket) {
+    state.socket.emit('screen:start');
   }
 
+  // Add screen share to grid
+  addVideoToGrid('local-screen', stream, 'Your Screen', false);
+
+  // Handle user stopping share
+  stream.getVideoTracks()[0].onended = () => {
+    stopScreenShare();
+    showToast('Screen sharing stopped', 'info');
+  };
+
+  showToast('Screen sharing started', 'success');
+  updateVoiceUI();
+}
+
+// Stop screen sharing
+function stopScreenShare() {
+  if (state.screenStream) {
+    state.screenStream.getTracks().forEach(t => t.stop());
+    state.screenStream = null;
+  }
+  state.isScreenSharing = false;
+
+  if (state.socket) {
+    state.socket.emit('screen:stop');
+  }
+
+  removeVideoFromGrid('local-screen');
   updateVoiceUI();
 }
 
@@ -874,29 +985,76 @@ function sendMessage() {
 }
 
 // Settings modal
-function openSettings() {
+async function openSettings() {
   const modal = document.getElementById('modalOverlay');
   const content = document.getElementById('modalContent');
+
+  // Enumerate devices first
+  await enumerateDevices();
+
+  const audioInputOptions = state.devices.audioInputs.map(d =>
+    `<option value="${d.deviceId}" ${state.settings.audioInputDevice === d.deviceId ? 'selected' : ''}>${escapeHtml(d.label || 'Microphone ' + (state.devices.audioInputs.indexOf(d) + 1))}</option>`
+  ).join('');
+
+  const audioOutputOptions = state.devices.audioOutputs.map(d =>
+    `<option value="${d.deviceId}" ${state.settings.audioOutputDevice === d.deviceId ? 'selected' : ''}>${escapeHtml(d.label || 'Speaker ' + (state.devices.audioOutputs.indexOf(d) + 1))}</option>`
+  ).join('');
+
+  const videoInputOptions = state.devices.videoInputs.map(d =>
+    `<option value="${d.deviceId}" ${state.settings.cameraDevice === d.deviceId ? 'selected' : ''}>${escapeHtml(d.label || 'Camera ' + (state.devices.videoInputs.indexOf(d) + 1))}</option>`
+  ).join('');
 
   content.innerHTML = `
     <div class="modal-header">
       <h2>Settings</h2>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div class="settings-section">
+        <h3>Devices</h3>
+        <div class="settings-row">
+          <label>Microphone</label>
+          <select id="audioInputDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="">Default</option>
+            ${audioInputOptions}
+          </select>
+          <button class="btn-secondary" onclick="testMicrophone()" style="margin-left: 8px; padding: 8px;">Test</button>
+        </div>
+        <div class="settings-row">
+          <label>Speakers</label>
+          <select id="audioOutputDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="">Default</option>
+            ${audioOutputOptions}
+          </select>
+        </div>
+        <div class="settings-row">
+          <label>Camera</label>
+          <select id="cameraDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="">Default</option>
+            ${videoInputOptions}
+          </select>
+          <button class="btn-secondary" onclick="testCamera()" style="margin-left: 8px; padding: 8px;">Preview</button>
+        </div>
+        <div id="cameraPreviewContainer" style="display: none; margin-top: 12px; background: var(--bg-dark); border-radius: 8px; overflow: hidden;">
+          <video id="cameraPreview" autoplay playsinline muted style="width: 100%; max-height: 180px; transform: scaleX(-1);"></video>
+        </div>
+      </div>
+
       <div class="settings-section">
         <h3>Audio</h3>
         <div class="settings-row">
           <label>Input Volume</label>
           <input type="range" min="0" max="200" value="${state.settings.inputVolume || 100}" id="inputVolume">
+          <span id="inputVolumeLabel" style="min-width: 40px; text-align: right;">${state.settings.inputVolume || 100}%</span>
         </div>
         <div class="settings-row">
           <label>Output Volume</label>
           <input type="range" min="0" max="200" value="${state.settings.outputVolume || 100}" id="outputVolume">
+          <span id="outputVolumeLabel" style="min-width: 40px; text-align: right;">${state.settings.outputVolume || 100}%</span>
         </div>
         <div class="settings-row">
           <label>Voice Mode</label>
-          <select id="voiceMode">
+          <select id="voiceMode" onchange="togglePTTKeyRow()">
             <option value="ptt" ${!state.settings.voiceActivated ? 'selected' : ''}>Push to Talk</option>
             <option value="vad" ${state.settings.voiceActivated ? 'selected' : ''}>Voice Activated</option>
           </select>
@@ -953,15 +1111,121 @@ function openSettings() {
     </div>
   `;
 
+  // Set up volume label updates
+  document.getElementById('inputVolume').addEventListener('input', (e) => {
+    document.getElementById('inputVolumeLabel').textContent = e.target.value + '%';
+  });
+  document.getElementById('outputVolume').addEventListener('input', (e) => {
+    document.getElementById('outputVolumeLabel').textContent = e.target.value + '%';
+  });
+
   modal.classList.add('active');
 }
 
+// Enumerate available media devices
+async function enumerateDevices() {
+  try {
+    // Request permission first to get device labels
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (e) {
+      // Try audio only if video fails
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+      } catch (e2) {
+        console.log('Could not get media permissions for device enumeration');
+      }
+    }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    state.devices.audioInputs = devices.filter(d => d.kind === 'audioinput');
+    state.devices.audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+    state.devices.videoInputs = devices.filter(d => d.kind === 'videoinput');
+  } catch (error) {
+    console.error('Failed to enumerate devices:', error);
+  }
+}
+
+// Toggle PTT key row visibility
+function togglePTTKeyRow() {
+  const voiceMode = document.getElementById('voiceMode').value;
+  const pttRow = document.getElementById('pttKeyRow');
+  pttRow.style.display = voiceMode === 'ptt' ? 'flex' : 'none';
+}
+
+// Test microphone
+let micTestStream = null;
+async function testMicrophone() {
+  const deviceId = document.getElementById('audioInputDevice').value;
+
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => t.stop());
+    micTestStream = null;
+    showToast('Microphone test stopped', 'info');
+    return;
+  }
+
+  try {
+    micTestStream = await navigator.mediaDevices.getUserMedia({
+      audio: deviceId ? { deviceId: { exact: deviceId } } : true
+    });
+    showToast('Microphone working! Speak to test. Click again to stop.', 'success');
+  } catch (error) {
+    showToast('Could not access microphone: ' + error.message, 'error');
+  }
+}
+
+// Test camera preview
+let cameraTestStream = null;
+async function testCamera() {
+  const deviceId = document.getElementById('cameraDevice').value;
+  const container = document.getElementById('cameraPreviewContainer');
+  const video = document.getElementById('cameraPreview');
+
+  if (cameraTestStream) {
+    cameraTestStream.getTracks().forEach(t => t.stop());
+    cameraTestStream = null;
+    video.srcObject = null;
+    container.style.display = 'none';
+    return;
+  }
+
+  try {
+    cameraTestStream = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { deviceId: { exact: deviceId } } : true
+    });
+    video.srcObject = cameraTestStream;
+    container.style.display = 'block';
+  } catch (error) {
+    showToast('Could not access camera: ' + error.message, 'error');
+  }
+}
+
 async function saveSettings() {
+  // Stop any test streams before saving
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => t.stop());
+    micTestStream = null;
+  }
+  if (cameraTestStream) {
+    cameraTestStream.getTracks().forEach(t => t.stop());
+    cameraTestStream = null;
+  }
+
   const newSettings = {
+    // Device settings
+    audioInputDevice: document.getElementById('audioInputDevice').value,
+    audioOutputDevice: document.getElementById('audioOutputDevice').value,
+    cameraDevice: document.getElementById('cameraDevice').value,
+    // Audio settings
     inputVolume: parseInt(document.getElementById('inputVolume').value),
     outputVolume: parseInt(document.getElementById('outputVolume').value),
     voiceActivated: document.getElementById('voiceMode').value === 'vad',
     pushToTalkKey: document.getElementById('pttKey').value,
+    // Behavior settings
     minimizeToTray: document.getElementById('minimizeToTray').checked,
     startMinimized: document.getElementById('startMinimized').checked
   };
@@ -1248,6 +1512,15 @@ function getRoleColor(role) {
 }
 
 function closeModal() {
+  // Stop any test streams
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => t.stop());
+    micTestStream = null;
+  }
+  if (cameraTestStream) {
+    cameraTestStream.getTracks().forEach(t => t.stop());
+    cameraTestStream = null;
+  }
   document.getElementById('modalOverlay').classList.remove('active');
 }
 
