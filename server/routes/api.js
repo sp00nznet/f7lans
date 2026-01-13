@@ -6,6 +6,7 @@ const authController = require('../controllers/authController');
 const adminController = require('../controllers/adminController');
 const channelController = require('../controllers/channelController');
 const userController = require('../controllers/userController');
+const federationController = require('../controllers/federationController');
 
 const router = express.Router();
 
@@ -77,6 +78,30 @@ router.get('/admin/invites', authenticate, adminOnly, adminController.getInvites
 router.post('/admin/invites', authenticate, adminOnly, adminController.createInvite);
 router.delete('/admin/invites/:inviteId', authenticate, adminOnly, adminController.deleteInvite);
 router.get('/admin/stats', authenticate, adminOnly, adminController.getStats);
+
+// ===== Federation Routes =====
+// Public endpoints (for server-to-server communication)
+router.get('/federation/info', federationController.getServerInfo);
+router.post('/federation/request', federationController.handleFederationRequest);
+router.post('/federation/approved', federationController.handleApprovalNotification);
+router.post('/federation/rejected', federationController.handleRejectionNotification);
+
+// Admin endpoints (for managing federation)
+router.get('/federation/status', authenticate, adminOnly, federationController.getFederationStatus);
+router.get('/federation/servers', authenticate, adminOnly, federationController.getFederatedServers);
+router.get('/federation/requests', authenticate, adminOnly, federationController.getPendingRequests);
+router.get('/federation/channels', authenticate, adminOnly, federationController.getFederatedChannels);
+
+router.post('/federation/initiate', authenticate, adminOnly, federationController.initiateFederation);
+router.post('/federation/analyze', authenticate, adminOnly, federationController.analyzeConflicts);
+router.post('/federation/requests/:requestId/approve', authenticate, adminOnly, federationController.approveFederationRequest);
+router.post('/federation/requests/:requestId/reject', authenticate, adminOnly, federationController.rejectFederationRequest);
+
+router.put('/federation/servers/:serverId/settings', authenticate, adminOnly, federationController.updateServerSettings);
+router.put('/federation/channels/:channelId/sync', authenticate, adminOnly, federationController.toggleChannelSync);
+
+router.post('/federation/servers/:serverId/disconnect', authenticate, adminOnly, federationController.disconnectServer);
+router.delete('/federation/servers/:serverId', authenticate, adminOnly, federationController.removeFederation);
 
 // Health check
 router.get('/health', (req, res) => {
