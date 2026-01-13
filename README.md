@@ -46,7 +46,7 @@ Tired of Discord's bloat? Want something you actually **own** and **control**?
 
 - **Your Server, Your Rules** — Host it yourself, keep your data private
 - **Built for Gaming** — Steam integration, game matching, minimal resource usage
-- **Media Streaming** — YouTube, Plex, Emby, Jellyfin, IPTV, Spotify bots built-in
+- **Media Streaming** — YouTube, Plex, Emby, Jellyfin, Twitch, IPTV, Spotify bots built-in
 - **Federation Ready** — Connect multiple servers into one mega-community
 - **File Sharing** — Share folders peer-to-peer with your community
 - **Actually Free** — No premium tiers, no nitro, no BS
@@ -100,9 +100,11 @@ npm start
 |---------|-------------|
 | **Text Chat** | Real-time messaging with markdown support |
 | **Voice Chat** | Crystal-clear audio with push-to-talk or voice activation |
+| **Voice Notifications** | Soft tones when users join/leave voice channels |
 | **Video Chat** | Face-to-face with your squad |
 | **Screen Share** | Share your gameplay, multiple windows at once |
 | **Direct Messages** | Private convos with friends |
+| **Image Sharing** | Drag & drop images and GIFs into chat |
 
 ### Gaming Integration
 
@@ -117,8 +119,11 @@ npm start
 
 | Feature | Description |
 |---------|-------------|
-| **Channels** | Organize discussions by topic |
+| **Channels** | Organize discussions by topic (text and voice) |
+| **Per-Channel Bots** | Enable/disable bots on a per-channel basis |
 | **Groups & Permissions** | Create groups and control feature access |
+| **Admin Delegation** | Grant admin panel access to trusted users |
+| **Server Branding** | Custom server icon uploaded from client |
 | **Email Invites** | Bring your friends aboard |
 | **User Profiles** | Customizable with avatars and display names |
 | **File Sharing** | Share folders with other users (P2P) |
@@ -127,7 +132,7 @@ npm start
 
 ## Media Bots
 
-F7Lans includes 9 built-in bots that admins can enable for their community:
+F7Lans includes 12 built-in bots that admins can enable for their community:
 
 ### YouTube Bot
 Stream YouTube videos in voice channels.
@@ -173,6 +178,27 @@ Shared browser sessions.
 - Transfer control between users
 - Great for watching videos, browsing together
 
+### Twitch Bot
+Watch Twitch streams together.
+- Search for live streams
+- Get stream info (title, game, viewers)
+- Embedded player and chat
+- Watch parties for your favorite streamers
+
+### Image Search Bot
+Search and share images (NSFW filtered).
+- Google Custom Search integration
+- Safe search enforced by default
+- Commands: `!image`, `!next`, `!random`
+- Per-channel access control
+
+### Star Citizen Bot
+Helpful tips for Star Citizen players.
+- Automatic tips when players are gaming
+- Category-specific hints (mining, combat, trading, exploration)
+- Location info and server status
+- Commands: `!sc`, `!schelp`, `!sclocation`
+
 ---
 
 ## Groups & Access Control
@@ -187,7 +213,8 @@ Control who can use what features:
 
 ### Available Permissions
 - Voice/text channels, screen sharing
-- Each media bot (YouTube, Plex, Emby, Jellyfin, IPTV, Spotify, Chrome)
+- Each media bot (YouTube, Plex, Emby, Jellyfin, Twitch, IPTV, Spotify, Chrome)
+- Utility bots (Activity Stats, RPG, Image Search, Star Citizen)
 - File sharing
 - Admin panel access
 
@@ -400,6 +427,31 @@ Run multiple F7Lans servers? Connect them together!
 2. Enable file sharing globally
 3. Grant "file-share" permission to appropriate groups
 4. Users can now share folders
+
+### Per-Channel Bot Settings
+
+Control which bots are available in each channel:
+
+1. Go to **Channel Settings** for any channel
+2. Toggle individual bots on/off
+3. Bots are enabled by default in all channels
+4. Useful for keeping certain channels focused (e.g., music-only, gaming-only)
+
+### Setting Server Icon
+
+1. Go to **Settings** → **Administration** → **Server Settings**
+2. Click "Upload Icon"
+3. Select an image file (PNG, JPG, GIF, SVG, or WebP)
+4. Icon appears in the server sidebar
+
+### Delegating Admin Access
+
+Grant trusted users access to the admin panel without full admin role:
+
+1. Go to **Settings** → **Administration** → **Users**
+2. Select a user
+3. Toggle "Admin Panel Access"
+4. User can now access admin features
 
 ---
 

@@ -184,7 +184,7 @@ const updateBotStatus = async (req, res) => {
   try {
     const { bot, enabled } = req.body;
 
-    const validBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg'];
+    const validBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg', 'twitch', 'imageSearch', 'starCitizen'];
     if (!validBots.includes(bot)) {
       return res.status(400).json({ error: 'Invalid bot name' });
     }
@@ -203,6 +203,58 @@ const updateBotStatus = async (req, res) => {
   }
 };
 
+// Upload server icon
+const uploadServerIcon = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const iconPath = `/uploads/server/${req.file.filename}`;
+
+    const settings = await ServerSettings.getSettings();
+    settings.serverIcon = iconPath;
+    await settings.save();
+
+    res.json({
+      message: 'Server icon uploaded successfully',
+      iconUrl: iconPath
+    });
+  } catch (error) {
+    console.error('Upload server icon error:', error);
+    res.status(500).json({ error: 'Failed to upload server icon' });
+  }
+};
+
+// Delete server icon
+const deleteServerIcon = async (req, res) => {
+  try {
+    const settings = await ServerSettings.getSettings();
+    settings.serverIcon = null;
+    await settings.save();
+
+    res.json({
+      message: 'Server icon removed'
+    });
+  } catch (error) {
+    console.error('Delete server icon error:', error);
+    res.status(500).json({ error: 'Failed to delete server icon' });
+  }
+};
+
+// Get server icon
+const getServerIcon = async (req, res) => {
+  try {
+    const settings = await ServerSettings.getSettings();
+    res.json({
+      iconUrl: settings.serverIcon
+    });
+  } catch (error) {
+    console.error('Get server icon error:', error);
+    res.status(500).json({ error: 'Failed to get server icon' });
+  }
+};
+
 module.exports = {
   getSettings,
   getPublicSettings,
@@ -211,5 +263,8 @@ module.exports = {
   updateVideoSettings,
   getSupportedLanguages,
   getBotStatus,
-  updateBotStatus
+  updateBotStatus,
+  uploadServerIcon,
+  deleteServerIcon,
+  getServerIcon
 };

@@ -17,6 +17,11 @@ const serverSettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Server icon (path to uploaded image)
+  serverIcon: {
+    type: String,
+    default: null
+  },
 
   // Default theme for new users
   defaultTheme: {
@@ -59,7 +64,10 @@ const serverSettingsSchema = new mongoose.Schema({
     spotify: { enabled: { type: Boolean, default: false } },
     chrome: { enabled: { type: Boolean, default: false } },
     activityStats: { enabled: { type: Boolean, default: false } },
-    rpg: { enabled: { type: Boolean, default: false } }
+    rpg: { enabled: { type: Boolean, default: false } },
+    twitch: { enabled: { type: Boolean, default: false } },
+    imageSearch: { enabled: { type: Boolean, default: false } },
+    starCitizen: { enabled: { type: Boolean, default: false } }
   },
 
   // Registration settings

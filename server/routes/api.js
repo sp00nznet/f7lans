@@ -24,6 +24,10 @@ const socialAccountsController = require('../controllers/socialAccountsControlle
 const steamAuthController = require('../controllers/steamAuthController');
 const serverSettingsController = require('../controllers/serverSettingsController');
 const twoFactorController = require('../controllers/twoFactorController');
+const attachmentController = require('../controllers/attachmentController');
+const twitchBotController = require('../controllers/twitchBotController');
+const imageSearchBotController = require('../controllers/imageSearchBotController');
+const starCitizenBotController = require('../controllers/starCitizenBotController');
 
 const router = express.Router();
 
@@ -46,6 +50,32 @@ const upload = multer({
     const ext = path.extname(file.originalname).toLowerCase();
     const mime = file.mimetype;
     if (allowed.test(ext) && allowed.test(mime)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Server icon upload config
+const serverIconStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../uploads/server'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `icon-${Date.now()}${ext}`);
+  }
+});
+
+const serverIconUpload = multer({
+  storage: serverIconStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp|svg/;
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype;
+    if (allowed.test(ext) && (allowed.test(mime) || mime === 'image/svg+xml')) {
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
@@ -91,6 +121,7 @@ router.get('/channels/:channelId/pinned', authenticate, channelController.getPin
 router.get('/admin/users', authenticate, adminOnly, adminController.getAllUsers);
 router.post('/admin/users', authenticate, adminOnly, adminController.createUser);
 router.put('/admin/users/:userId/role', authenticate, adminOnly, adminController.updateUserRole);
+router.put('/admin/users/:userId/admin-access', authenticate, adminOnly, adminController.setAdminPanelAccess);
 router.put('/admin/users/:userId/ban', authenticate, adminOnly, adminController.toggleUserBan);
 router.get('/admin/invites', authenticate, adminOnly, adminController.getInvites);
 router.post('/admin/invites', authenticate, adminOnly, adminController.createInvite);
@@ -201,8 +232,48 @@ router.post('/admin/spotify-bot/skip', authenticate, spotifyBotController.skip);
 router.get('/admin/spotify-bot/queue/:channelId', authenticate, spotifyBotController.getQueue);
 router.post('/admin/spotify-bot/stop', authenticate, spotifyBotController.stop);
 
+// ===== Twitch Bot Routes =====
+router.get('/admin/twitch-bot/status', authenticate, adminOnly, twitchBotController.getStatus);
+router.post('/admin/twitch-bot/enable', authenticate, adminOnly, twitchBotController.setEnabled);
+router.post('/admin/twitch-bot/configure', authenticate, adminOnly, twitchBotController.configure);
+router.get('/admin/twitch-bot/search', authenticate, twitchBotController.searchStreams);
+router.get('/admin/twitch-bot/stream/:username', authenticate, twitchBotController.getStreamInfo);
+router.post('/admin/twitch-bot/play', authenticate, twitchBotController.play);
+router.post('/admin/twitch-bot/stop', authenticate, twitchBotController.stop);
+router.get('/admin/twitch-bot/embed/:username', authenticate, twitchBotController.getEmbedUrl);
+router.get('/admin/twitch-bot/channel/:channelId', authenticate, twitchBotController.getActiveStream);
+
+// ===== Image Search Bot Routes =====
+router.get('/admin/image-bot/status', authenticate, adminOnly, imageSearchBotController.getStatus);
+router.post('/admin/image-bot/enable', authenticate, adminOnly, imageSearchBotController.setEnabled);
+router.post('/admin/image-bot/configure', authenticate, adminOnly, imageSearchBotController.configure);
+router.post('/admin/image-bot/safe-search', authenticate, adminOnly, imageSearchBotController.setSafeSearch);
+router.post('/admin/image-bot/search', authenticate, imageSearchBotController.search);
+router.post('/admin/image-bot/next', authenticate, imageSearchBotController.next);
+router.post('/admin/image-bot/random', authenticate, imageSearchBotController.random);
+router.get('/admin/image-bot/search-direct', authenticate, imageSearchBotController.searchDirect);
+
+// ===== Star Citizen Bot Routes =====
+router.get('/admin/sc-bot/status', authenticate, adminOnly, starCitizenBotController.getStatus);
+router.post('/admin/sc-bot/enable', authenticate, adminOnly, starCitizenBotController.setEnabled);
+router.post('/admin/sc-bot/monitor', authenticate, adminOnly, starCitizenBotController.startMonitoring);
+router.post('/admin/sc-bot/unmonitor', authenticate, adminOnly, starCitizenBotController.stopMonitoring);
+router.get('/admin/sc-bot/tip', authenticate, starCitizenBotController.getTip);
+router.post('/admin/sc-bot/tip', authenticate, starCitizenBotController.postTip);
+router.get('/admin/sc-bot/location/:location', authenticate, starCitizenBotController.getLocationInfo);
+router.get('/admin/sc-bot/server-status', authenticate, starCitizenBotController.getServerStatus);
+router.get('/admin/sc-bot/players/:channelId', authenticate, starCitizenBotController.getActivePlayers);
+router.put('/admin/sc-bot/channel/:channelId', authenticate, adminOnly, starCitizenBotController.updateChannelSettings);
+router.post('/admin/sc-bot/track-activity', authenticate, starCitizenBotController.trackActivity);
+
 // ===== Channel Moderation Routes =====
 router.post('/channels/:channelId/kick/:userId', authenticate, adminOnly, channelController.kickUser);
+
+// ===== Channel Bot Settings Routes =====
+router.get('/channels/:channelId/bots', authenticate, channelController.getChannelBotSettings);
+router.put('/channels/:channelId/bots', authenticate, adminOnly, channelController.updateChannelBotSettings);
+router.put('/channels/:channelId/bots/:botName', authenticate, adminOnly, channelController.toggleChannelBot);
+router.get('/channels/:channelId/bots/:botName/enabled', authenticate, channelController.checkBotEnabled);
 
 // ===== Group Management Routes =====
 router.get('/admin/groups', authenticate, adminOnly, groupController.getAllGroups);
@@ -297,6 +368,11 @@ router.get('/admin/settings/languages', authenticate, serverSettingsController.g
 router.get('/admin/settings/bots', authenticate, adminOnly, serverSettingsController.getBotStatus);
 router.put('/admin/settings/bots', authenticate, adminOnly, serverSettingsController.updateBotStatus);
 
+// Server icon
+router.get('/settings/icon', serverSettingsController.getServerIcon);
+router.post('/admin/settings/icon', authenticate, adminOnly, serverIconUpload.single('icon'), serverSettingsController.uploadServerIcon);
+router.delete('/admin/settings/icon', authenticate, adminOnly, serverSettingsController.deleteServerIcon);
+
 // ===== Two-Factor Authentication Routes =====
 router.get('/auth/2fa/status', authenticate, twoFactorController.getStatus);
 router.post('/auth/2fa/setup', authenticate, twoFactorController.setupStart);
@@ -304,6 +380,10 @@ router.post('/auth/2fa/verify-setup', authenticate, twoFactorController.setupCom
 router.post('/auth/2fa/disable', authenticate, twoFactorController.disable);
 router.post('/auth/2fa/verify', twoFactorController.verify); // No auth - used during login
 router.post('/auth/2fa/backup-codes', authenticate, twoFactorController.regenerateBackupCodes);
+
+// ===== Attachment Routes =====
+router.post('/attachments/upload', authenticate, attachmentController.uploadFiles);
+router.delete('/attachments/:filename', authenticate, attachmentController.deleteAttachment);
 
 // Health check
 router.get('/health', (req, res) => {

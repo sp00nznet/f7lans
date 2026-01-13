@@ -57,9 +57,9 @@ const updateUserRole = async (req, res) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    // Only superadmin can make new admins
-    if (role === 'admin' && req.user.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Only superadmin can assign admin role' });
+    // Admins and superadmins can assign admin role
+    if (role === 'admin' && !['admin', 'superadmin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Only admins can assign admin role' });
     }
 
     const user = await User.findByIdAndUpdate(
@@ -76,6 +76,32 @@ const updateUserRole = async (req, res) => {
   } catch (error) {
     console.error('Update role error:', error);
     res.status(500).json({ error: 'Failed to update role' });
+  }
+};
+
+// Grant/revoke admin panel access (admin)
+const setAdminPanelAccess = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { access } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { adminPanelAccess: !!access },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      message: access ? 'Admin panel access granted' : 'Admin panel access revoked',
+      user: user.toPublicProfile()
+    });
+  } catch (error) {
+    console.error('Set admin access error:', error);
+    res.status(500).json({ error: 'Failed to update admin panel access' });
   }
 };
 
@@ -294,6 +320,7 @@ module.exports = {
   getAllUsers,
   createUser,
   updateUserRole,
+  setAdminPanelAccess,
   toggleUserBan,
   createInvite,
   getInvites,

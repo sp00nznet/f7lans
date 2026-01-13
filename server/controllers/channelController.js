@@ -210,6 +210,141 @@ const kickUser = async (req, res) => {
   }
 };
 
+// Get channel bot settings
+const getChannelBotSettings = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    res.json({
+      channelId,
+      channelName: channel.name,
+      bots: channel.getBotSettings()
+    });
+  } catch (error) {
+    console.error('Get channel bot settings error:', error);
+    res.status(500).json({ error: 'Failed to get channel bot settings' });
+  }
+};
+
+// Update channel bot settings
+const updateChannelBotSettings = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { bots } = req.body;
+
+    if (!bots || typeof bots !== 'object') {
+      return res.status(400).json({ error: 'Bot settings object required' });
+    }
+
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const validBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg', 'twitch', 'imageSearch', 'starCitizen'];
+
+    // Initialize bots object if it doesn't exist
+    if (!channel.bots) {
+      channel.bots = {};
+    }
+
+    // Update each bot setting
+    for (const [botName, settings] of Object.entries(bots)) {
+      if (!validBots.includes(botName)) {
+        continue; // Skip invalid bot names
+      }
+
+      if (!channel.bots[botName]) {
+        channel.bots[botName] = {};
+      }
+
+      if (settings.enabled !== undefined) {
+        channel.bots[botName].enabled = !!settings.enabled;
+      }
+    }
+
+    // Mark bots as modified for mongoose
+    channel.markModified('bots');
+    await channel.save();
+
+    res.json({
+      message: 'Channel bot settings updated',
+      channelId,
+      bots: channel.getBotSettings()
+    });
+  } catch (error) {
+    console.error('Update channel bot settings error:', error);
+    res.status(500).json({ error: 'Failed to update channel bot settings' });
+  }
+};
+
+// Toggle specific bot for channel
+const toggleChannelBot = async (req, res) => {
+  try {
+    const { channelId, botName } = req.params;
+    const { enabled } = req.body;
+
+    const validBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg', 'twitch', 'imageSearch', 'starCitizen'];
+
+    if (!validBots.includes(botName)) {
+      return res.status(400).json({ error: 'Invalid bot name' });
+    }
+
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Initialize bots object if needed
+    if (!channel.bots) {
+      channel.bots = {};
+    }
+    if (!channel.bots[botName]) {
+      channel.bots[botName] = {};
+    }
+
+    channel.bots[botName].enabled = enabled !== undefined ? !!enabled : !channel.bots[botName].enabled;
+    channel.markModified('bots');
+    await channel.save();
+
+    res.json({
+      message: `${botName} bot ${channel.bots[botName].enabled ? 'enabled' : 'disabled'} for channel`,
+      channelId,
+      botName,
+      enabled: channel.bots[botName].enabled
+    });
+  } catch (error) {
+    console.error('Toggle channel bot error:', error);
+    res.status(500).json({ error: 'Failed to toggle channel bot' });
+  }
+};
+
+// Check if bot is enabled for channel
+const checkBotEnabled = async (req, res) => {
+  try {
+    const { channelId, botName } = req.params;
+
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    res.json({
+      channelId,
+      botName,
+      enabled: channel.isBotEnabled(botName)
+    });
+  } catch (error) {
+    console.error('Check bot enabled error:', error);
+    res.status(500).json({ error: 'Failed to check bot status' });
+  }
+};
+
 module.exports = {
   getChannels,
   getChannel,
@@ -218,5 +353,9 @@ module.exports = {
   deleteChannel,
   getMessages,
   getPinnedMessages,
-  kickUser
+  kickUser,
+  getChannelBotSettings,
+  updateChannelBotSettings,
+  toggleChannelBot,
+  checkBotEnabled
 };

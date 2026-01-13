@@ -45,6 +45,7 @@ Create topic-based text channels for your community.
 - Real-time message delivery via WebSocket
 - Markdown formatting support
 - File attachments (images, documents)
+- **Drag & drop image/GIF sharing**
 - Message editing and deletion
 - Reply threading
 - Emoji reactions
@@ -52,6 +53,14 @@ Create topic-based text channels for your community.
 - Typing indicators
 - Read receipts
 - Message history (persistent)
+
+**Image Sharing:**
+- Drag and drop images directly into chat
+- Multiple images at once (up to 5)
+- Supported formats: JPEG, PNG, GIF, WebP
+- Max file size: 10MB per image
+- Preview before sending
+- Images display inline in chat
 
 **Channel Types:**
 | Type | Description | Icon |
@@ -75,6 +84,13 @@ High-quality voice communication using WebRTC.
 - Deafen toggle (mute incoming audio)
 - Speaking indicators
 - Voice activation detection
+- **Join/leave notifications** (soft audio tones)
+
+**Voice Notifications:**
+- Rising tone when someone joins
+- Falling tone when someone leaves
+- Configurable in user settings
+- Non-intrusive audio feedback
 
 **Audio Quality:**
 - Sample rate: 48kHz
@@ -249,7 +265,7 @@ AI-powered game recommendations.
 
 ## Media Bots
 
-F7Lans includes 7 built-in media bots. Admins enable bots, and users with permission can use them.
+F7Lans includes 12 built-in bots. Admins enable bots globally and can control which bots are available in each channel. Users with permission can use enabled bots.
 
 ### YouTube Bot
 
@@ -408,6 +424,102 @@ Shared browser sessions for collaborative browsing.
 - Demo websites
 - Browse together in voice chat
 
+### Twitch Bot
+
+Watch Twitch streams together.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Twitch
+2. Enable the bot
+3. Enter Twitch Client ID and Client Secret (from Twitch Developer Console)
+
+**User Features:**
+- Search for live streams
+- View stream info (title, game, viewer count)
+- Embedded Twitch player and chat
+- Watch parties for favorite streamers
+
+### Image Search Bot
+
+Search and share images with safe search filtering.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Image Search
+2. Enable the bot
+3. Enter Google API Key and Custom Search Engine ID
+4. Set safe search level (active/medium/off)
+
+**User Features:**
+- Search for images: `!image <query>`
+- Get next result: `!next`
+- Get random from results: `!random`
+- NSFW content filtered by default
+
+**Safe Search Levels:**
+| Level | Description |
+|-------|-------------|
+| active | Strict filtering (default) |
+| medium | Moderate filtering |
+| off | No filtering (admin only) |
+
+### Star Citizen Bot
+
+Helpful tips for Star Citizen players.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Star Citizen
+2. Enable the bot
+3. Select channels to monitor
+
+**Features:**
+- Automatic tips when players are gaming
+- Category-specific hints
+- Location information
+- Server status checks
+
+**Commands:**
+| Command | Description |
+|---------|-------------|
+| `!sc [topic]` | Get a tip (topics: combat, mining, trading, exploration, ships, newPlayer) |
+| `!schelp` | Show available commands |
+| `!sclocation <place>` | Get info about a location |
+| `!scstatus` | Check server status |
+
+**Tip Categories:**
+- General gameplay
+- Combat and dogfighting
+- Mining operations
+- Trading and cargo
+- Exploration and caves
+- Ships and navigation
+- New player guidance
+
+---
+
+## Per-Channel Bot Settings
+
+Control which bots are available in each channel.
+
+### How It Works
+
+1. Bots are enabled globally in admin settings
+2. Admins can then enable/disable bots per channel
+3. By default, all bots are enabled in all channels
+4. Users can only use bots enabled both globally AND in the channel
+
+### Managing Channel Bots
+
+1. Go to channel settings (gear icon on channel)
+2. Toggle individual bots on/off
+3. Changes take effect immediately
+
+### Use Cases
+
+- **Gaming channels**: Enable only Activity Stats and RPG bots
+- **Music channels**: Enable only Spotify bot
+- **Watch party channels**: Enable YouTube, Plex, Twitch bots
+- **General channels**: Disable media bots to keep focus on chat
+
 ---
 
 ## Groups & Access Control
@@ -452,6 +564,11 @@ Groups are collections of users with shared permissions. Users can belong to mul
 | `chrome-bot` | Use Chrome bot |
 | `iptv-bot` | Use IPTV bot |
 | `spotify-bot` | Use Spotify bot |
+| `twitch-bot` | Use Twitch bot |
+| `image-bot` | Use Image Search bot |
+| `sc-bot` | Use Star Citizen bot |
+| `activity-bot` | Use Activity Stats bot |
+| `rpg-bot` | Use RPG bot |
 | `file-share` | Share and access shared files |
 | `admin-panel` | Access admin settings |
 
@@ -546,6 +663,21 @@ Hierarchical permission system.
 | Admin | Manage channels, ban users, configure bots |
 | Super Admin | Full control, manage admins |
 
+### Admin Panel Access Delegation
+
+Grant trusted users access to admin features without full admin role.
+
+**How It Works:**
+1. Go to Settings → Administration → Users
+2. Select a user
+3. Toggle "Admin Panel Access"
+4. User can now access admin features
+
+**Use Cases:**
+- Let moderators access specific admin panels
+- Grant bot configuration access
+- Delegate server management
+
 ### User Management
 
 Control your community.
@@ -558,6 +690,7 @@ Control your community.
 - View user activity
 - Reset user passwords (super admin)
 - Assign users to groups
+- **Grant/revoke admin panel access**
 
 ### Channel Management
 
@@ -1108,6 +1241,21 @@ When you enable 2FA, you receive 10 backup codes:
 ---
 
 ## Server Settings
+
+### Server Branding
+
+Customize your server's appearance.
+
+**Server Icon:**
+1. Go to **Settings** → **Administration** → **Server Settings**
+2. Click "Upload Icon"
+3. Select an image file (PNG, JPG, GIF, SVG, or WebP)
+4. Max size: 2MB
+5. Icon appears in the server sidebar
+
+**Server Name & Description:**
+- Customize the server name displayed to users
+- Add a description for your community
 
 ### Video Streaming Defaults
 

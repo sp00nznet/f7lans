@@ -33,8 +33,13 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'admin', 'superadmin'],
+    enum: ['user', 'moderator', 'admin', 'superadmin'],
     default: 'user'
+  },
+  // Admin panel access - allows specific users to access admin features without full admin role
+  adminPanelAccess: {
+    type: Boolean,
+    default: false
   },
   status: {
     type: String,

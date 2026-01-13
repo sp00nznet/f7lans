@@ -1,6 +1,55 @@
 // F7Lans Electron Client
 // Desktop Application for F7Lans Gaming Community
 
+// Audio context for notification sounds
+let audioContext = null;
+
+function getAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioContext;
+}
+
+// Play notification tone for voice channel events
+function playVoiceNotification(type) {
+  // Check if sounds are enabled in settings
+  if (state.settings?.enableSounds === false) return;
+
+  try {
+    const ctx = getAudioContext();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    // Set volume (soft notification)
+    gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+
+    if (type === 'join') {
+      // Rising tone for join - pleasant soft chime
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(440, ctx.currentTime); // A4
+      oscillator.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.2);
+    } else if (type === 'leave') {
+      // Falling tone for leave - soft descending tone
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(660, ctx.currentTime); // E5
+      oscillator.frequency.linearRampToValueAtTime(330, ctx.currentTime + 0.15); // E4
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.2);
+    }
+  } catch (e) {
+    // Audio not supported or blocked, silently ignore
+    console.log('Audio notification not available');
+  }
+}
+
 // State
 const state = {
   user: null,
@@ -29,7 +78,9 @@ const state = {
   // Multi-server support
   servers: [], // Array of { id, name, url, token, user, icon }
   currentServerId: null,
-  theme: 'dark' // Current theme
+  theme: 'dark', // Current theme
+  // Pending attachments for current message
+  pendingAttachments: []
 };
 
 // Initialize application
@@ -290,11 +341,13 @@ function connectSocket() {
   // Voice handlers
   state.socket.on('voice:userJoined', (data) => {
     showToast(`${data.user.displayName || data.user.username} joined voice`, 'info');
+    playVoiceNotification('join');
     renderVoiceUsers();
     loadChannels(); // Refresh channel user counts
   });
 
   state.socket.on('voice:userLeft', (data) => {
+    playVoiceNotification('leave');
     renderVoiceUsers();
     loadChannels();
   });
@@ -310,6 +363,9 @@ function showMainApp() {
   document.getElementById('mainApp').style.display = 'grid';
 
   renderMainApp();
+
+  // Initialize drag-drop after render
+  setTimeout(() => setupDragDrop(), 100);
 }
 
 // Render main application
@@ -395,10 +451,10 @@ function renderMainApp() {
       <div class="message-input-container">
         <div class="message-input-wrapper">
           <div class="input-actions-left">
-            <button class="input-btn" title="Attach">➕</button>
+            <button class="input-btn" title="Attach Image" onclick="openFilePicker()">➕</button>
           </div>
           <textarea class="message-input" id="messageInput"
-            placeholder="Message #general"
+            placeholder="Message #general (drag images to attach)"
             rows="1"
             onkeydown="handleInputKeyDown(event)"></textarea>
           <div class="input-actions-right">
@@ -1045,18 +1101,158 @@ function handleInputKeyDown(e) {
   }
 }
 
-function sendMessage() {
+async function sendMessage() {
   const input = document.getElementById('messageInput');
   const content = input.value.trim();
 
-  if (!content || !state.currentChannel || !state.socket) return;
+  if ((!content && state.pendingAttachments.length === 0) || !state.currentChannel || !state.socket) return;
 
-  state.socket.emit('message:send', {
+  const messageData = {
     channelId: state.currentChannel._id,
     content
+  };
+
+  // Include attachments if any
+  if (state.pendingAttachments.length > 0) {
+    messageData.attachments = state.pendingAttachments;
+  }
+
+  state.socket.emit('message:send', messageData);
+
+  // Clear input and attachments
+  input.value = '';
+  state.pendingAttachments = [];
+  renderAttachmentPreview();
+}
+
+// File attachment handling
+function setupDragDrop() {
+  const messagesArea = document.getElementById('messagesArea');
+  const inputContainer = document.querySelector('.message-input-container');
+
+  if (!messagesArea || !inputContainer) return;
+
+  // Prevent default drag behaviors
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+    document.body.addEventListener(event, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
   });
 
-  input.value = '';
+  // Highlight drop zone
+  ['dragenter', 'dragover'].forEach(event => {
+    messagesArea.addEventListener(event, () => {
+      messagesArea.classList.add('drag-highlight');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(event => {
+    messagesArea.addEventListener(event, () => {
+      messagesArea.classList.remove('drag-highlight');
+    });
+  });
+
+  // Handle file drop
+  messagesArea.addEventListener('drop', handleFileDrop);
+  inputContainer.addEventListener('drop', handleFileDrop);
+}
+
+async function handleFileDrop(e) {
+  const files = e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+
+  await uploadFiles(Array.from(files));
+}
+
+// Open file picker
+function openFilePicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = 'image/*,.gif';
+
+  input.onchange = async (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await uploadFiles(Array.from(e.target.files));
+    }
+  };
+
+  input.click();
+}
+
+async function uploadFiles(files) {
+  // Filter to only images
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+  if (imageFiles.length === 0) {
+    showToast('Only images and GIFs are supported', 'error');
+    return;
+  }
+
+  if (imageFiles.length + state.pendingAttachments.length > 5) {
+    showToast('Maximum 5 images per message', 'error');
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    imageFiles.forEach(file => formData.append('files', file));
+
+    const response = await fetch(`${state.serverUrl}/api/attachments/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Upload failed');
+    }
+
+    const data = await response.json();
+    state.pendingAttachments.push(...data.attachments);
+    renderAttachmentPreview();
+    showToast(`${data.attachments.length} image(s) ready to send`, 'success');
+  } catch (error) {
+    console.error('Upload error:', error);
+    showToast(error.message || 'Failed to upload files', 'error');
+  }
+}
+
+function renderAttachmentPreview() {
+  let previewContainer = document.getElementById('attachmentPreview');
+
+  if (!previewContainer) {
+    const inputWrapper = document.querySelector('.message-input-wrapper');
+    if (!inputWrapper) return;
+
+    previewContainer = document.createElement('div');
+    previewContainer.id = 'attachmentPreview';
+    previewContainer.className = 'attachment-preview';
+    inputWrapper.insertBefore(previewContainer, inputWrapper.firstChild);
+  }
+
+  if (state.pendingAttachments.length === 0) {
+    previewContainer.style.display = 'none';
+    previewContainer.innerHTML = '';
+    return;
+  }
+
+  previewContainer.style.display = 'flex';
+  previewContainer.innerHTML = state.pendingAttachments.map((att, index) => `
+    <div class="attachment-preview-item">
+      <img src="${state.serverUrl}${att.url}" alt="${escapeHtml(att.filename)}" />
+      <button class="remove-attachment" onclick="removeAttachment(${index})" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeAttachment(index) {
+  state.pendingAttachments.splice(index, 1);
+  renderAttachmentPreview();
 }
 
 // Settings modal
