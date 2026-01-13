@@ -2,6 +2,15 @@
   <img src="client/public/logo192.png" alt="F7Lans Logo" width="120" height="120">
 </p>
 
+```
+███████╗███████╗██╗      █████╗ ███╗   ██╗███████╗
+██╔════╝╚════██║██║     ██╔══██╗████╗  ██║██╔════╝
+█████╗      ██╔╝██║     ███████║██╔██╗ ██║███████╗
+██╔══╝     ██╔╝ ██║     ██╔══██║██║╚██╗██║╚════██║
+██║        ██║  ███████╗██║  ██║██║ ╚████║███████║
+╚═╝        ╚═╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
+```
+
 <h1 align="center">F7Lans</h1>
 
 <p align="center">
@@ -118,7 +127,7 @@ npm start
 
 ## Media Bots
 
-F7Lans includes 7 built-in media bots that admins can enable for their community:
+F7Lans includes 9 built-in bots that admins can enable for their community:
 
 ### YouTube Bot
 Stream YouTube videos in voice channels.
@@ -206,6 +215,63 @@ Share folders peer-to-peer with your community:
 
 ---
 
+## Activity Tracking
+
+See what games your community is playing:
+
+- **Live Activity** — See who's playing what right now
+- **Statistics** — Track playtime and game preferences
+- **Common Games** — Find games you share with friends
+- **Leaderboards** — See top players on your server
+
+### Activity Stats Bot
+Enable the Activity Stats Bot to share server-wide gaming statistics in channels.
+
+---
+
+## RPG Bot
+
+Interactive text-based adventures:
+
+- **Create Campaigns** — Choose setting (Fantasy, Sci-Fi, Horror, etc.)
+- **Character Classes** — Warrior, Mage, Rogue, Cleric, Ranger, Bard
+- **Solo or Party** — Play alone or with friends
+- **Combat System** — Dice rolls, leveling, loot
+
+Play tabletop-style adventures without leaving F7Lans!
+
+---
+
+## Social Account Linking
+
+Connect your gaming profiles:
+
+| Platform | Feature |
+|----------|---------|
+| **Steam** | OAuth verification |
+| **Reddit** | Username linking |
+| **Twitter/X** | Profile linking |
+| **Xbox** | Gamertag |
+| **PlayStation** | PSN ID |
+| **Blizzard** | BattleTag |
+
+Show your gaming identity across all platforms.
+
+---
+
+## Security
+
+### Two-Factor Authentication
+
+Protect your account with 2FA:
+
+- TOTP support (Google Authenticator, Authy, etc.)
+- Backup codes for recovery
+- Enable/disable anytime
+- Required only at login
+
+---
+
 ## Desktop App
 
 The desktop client is built for gamers who need performance:
@@ -220,7 +286,7 @@ The desktop client is built for gamers who need performance:
 ### Building the Desktop Client
 
 ```bash
-# Windows
+# Windows (full client with embedded server)
 scripts/build-electron.bat
 
 # Linux
@@ -235,6 +301,29 @@ npm run build
 ```
 
 Find your installer in `electron-client/dist/`
+
+### Standalone Client (No Embedded Server)
+
+Want a client that connects to remote servers only? No embedded server, smaller footprint.
+
+```bash
+# Windows
+scripts/build-client-standalone.bat
+
+# Linux
+./scripts/build-client-standalone.sh
+```
+
+The standalone client is perfect for users who just want to connect to existing F7Lans servers.
+
+### Multi-Server Support
+
+The desktop client supports connecting to multiple F7Lans servers:
+
+- Click the **+** button in the server list to add servers
+- Switch between servers with a single click
+- Each server maintains its own connection and state
+- Right-click server icons to disconnect
 
 ---
 

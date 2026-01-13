@@ -17,6 +17,13 @@ const iptvBotController = require('../controllers/iptvBotController');
 const spotifyBotController = require('../controllers/spotifyBotController');
 const groupController = require('../controllers/groupController');
 const fileShareController = require('../controllers/fileShareController');
+const activityController = require('../controllers/activityController');
+const activityStatsBotController = require('../controllers/activityStatsBotController');
+const rpgBotController = require('../controllers/rpgBotController');
+const socialAccountsController = require('../controllers/socialAccountsController');
+const steamAuthController = require('../controllers/steamAuthController');
+const serverSettingsController = require('../controllers/serverSettingsController');
+const twoFactorController = require('../controllers/twoFactorController');
 
 const router = express.Router();
 
@@ -228,6 +235,75 @@ router.delete('/file-share/folders/:folderId', authenticate, requirePermission('
 router.get('/file-share/users/:userId/folders', authenticate, requirePermission('file-share'), fileShareController.getUserSharedFolders);
 router.get('/file-share/users/:userId/folders/:folderId/contents', authenticate, requirePermission('file-share'), fileShareController.getFolderContents);
 router.post('/file-share/users/:userId/folders/:folderId/download', authenticate, requirePermission('file-share'), fileShareController.requestDownload);
+
+// ===== Activity Routes =====
+router.post('/activity/start', authenticate, activityController.startActivity);
+router.post('/activity/end', authenticate, activityController.endActivity);
+router.get('/activity/current', authenticate, activityController.getCurrentActivity);
+router.get('/activity/stats', authenticate, activityController.getMyStats);
+router.get('/activity/history', authenticate, activityController.getMyHistory);
+router.get('/activity/users/:userId/stats', authenticate, activityController.getUserStats);
+router.get('/activity/users/:userId/common', authenticate, activityController.getCommonActivities);
+router.get('/admin/activity/stats', authenticate, adminOnly, activityController.getServerStats);
+
+// ===== Activity Stats Bot Routes =====
+router.get('/admin/activity-bot/status', authenticate, adminOnly, activityStatsBotController.getStatus);
+router.post('/admin/activity-bot/enable', authenticate, adminOnly, activityStatsBotController.setEnabled);
+router.post('/admin/activity-bot/start', authenticate, activityStatsBotController.startStats);
+router.post('/admin/activity-bot/stop', authenticate, activityStatsBotController.stopStats);
+router.get('/admin/activity-bot/current-stats', authenticate, activityStatsBotController.getStats);
+router.get('/admin/activity-bot/leaderboard', authenticate, activityStatsBotController.getLeaderboard);
+router.get('/admin/activity-bot/game/:gameName', authenticate, activityStatsBotController.getGameStats);
+
+// ===== RPG Bot Routes =====
+router.get('/admin/rpg-bot/status', authenticate, adminOnly, rpgBotController.getStatus);
+router.post('/admin/rpg-bot/enable', authenticate, adminOnly, rpgBotController.setEnabled);
+router.post('/rpg/campaign', authenticate, rpgBotController.createCampaign);
+router.post('/rpg/join', authenticate, rpgBotController.joinCampaign);
+router.post('/rpg/start', authenticate, rpgBotController.startAdventure);
+router.post('/rpg/action', authenticate, rpgBotController.takeAction);
+router.get('/rpg/campaign/:channelId', authenticate, rpgBotController.getCampaign);
+router.post('/rpg/end', authenticate, rpgBotController.endCampaign);
+router.post('/rpg/roll', authenticate, rpgBotController.rollDice);
+
+// ===== Social Accounts Routes =====
+router.get('/social/accounts', authenticate, socialAccountsController.getLinkedAccounts);
+router.post('/social/reddit/link', authenticate, socialAccountsController.linkReddit);
+router.post('/social/reddit/verify', authenticate, socialAccountsController.verifyReddit);
+router.post('/social/twitter/link', authenticate, socialAccountsController.linkTwitter);
+router.post('/social/twitter/verify', authenticate, socialAccountsController.verifyTwitter);
+router.post('/social/xbox/link', authenticate, socialAccountsController.linkXbox);
+router.post('/social/xbox/verify', authenticate, socialAccountsController.verifyXbox);
+router.post('/social/playstation/link', authenticate, socialAccountsController.linkPlayStation);
+router.post('/social/playstation/verify', authenticate, socialAccountsController.verifyPlayStation);
+router.post('/social/blizzard/link', authenticate, socialAccountsController.linkBlizzard);
+router.post('/social/blizzard/verify', authenticate, socialAccountsController.verifyBlizzard);
+router.delete('/social/:platform', authenticate, socialAccountsController.unlinkAccount);
+
+// ===== Steam Auth Routes =====
+router.post('/steam/auth-url', authenticate, steamAuthController.getAuthUrl);
+router.get('/steam/callback', steamAuthController.handleCallback);
+router.post('/steam/link', authenticate, steamAuthController.linkSteamManual);
+router.get('/steam/profile', authenticate, steamAuthController.getSteamProfile);
+router.delete('/steam/unlink', authenticate, steamAuthController.unlinkSteam);
+
+// ===== Server Settings Routes =====
+router.get('/settings', authenticate, serverSettingsController.getPublicSettings);
+router.get('/admin/settings', authenticate, adminOnly, serverSettingsController.getSettings);
+router.put('/admin/settings', authenticate, adminOnly, serverSettingsController.updateSettings);
+router.get('/admin/settings/video', authenticate, adminOnly, serverSettingsController.getVideoSettings);
+router.put('/admin/settings/video', authenticate, adminOnly, serverSettingsController.updateVideoSettings);
+router.get('/admin/settings/languages', authenticate, serverSettingsController.getSupportedLanguages);
+router.get('/admin/settings/bots', authenticate, adminOnly, serverSettingsController.getBotStatus);
+router.put('/admin/settings/bots', authenticate, adminOnly, serverSettingsController.updateBotStatus);
+
+// ===== Two-Factor Authentication Routes =====
+router.get('/auth/2fa/status', authenticate, twoFactorController.getStatus);
+router.post('/auth/2fa/setup', authenticate, twoFactorController.setupStart);
+router.post('/auth/2fa/verify-setup', authenticate, twoFactorController.setupComplete);
+router.post('/auth/2fa/disable', authenticate, twoFactorController.disable);
+router.post('/auth/2fa/verify', twoFactorController.verify); // No auth - used during login
+router.post('/auth/2fa/backup-codes', authenticate, twoFactorController.regenerateBackupCodes);
 
 // Health check
 router.get('/health', (req, res) => {
