@@ -33,8 +33,13 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'admin', 'superadmin'],
+    enum: ['user', 'moderator', 'admin', 'superadmin'],
     default: 'user'
+  },
+  // Admin panel access - allows specific users to access admin features without full admin role
+  adminPanelAccess: {
+    type: Boolean,
+    default: false
   },
   status: {
     type: String,
@@ -49,6 +54,44 @@ const userSchema = new mongoose.Schema({
   steamId: {
     type: String,
     default: null
+  },
+  steamVerified: {
+    type: Boolean,
+    default: false
+  },
+  // Social account links
+  socialAccounts: {
+    reddit: { username: String, verified: { type: Boolean, default: false } },
+    twitter: { username: String, verified: { type: Boolean, default: false } },
+    xbox: { gamertag: String, verified: { type: Boolean, default: false } },
+    playstation: { username: String, verified: { type: Boolean, default: false } },
+    blizzard: { battletag: String, verified: { type: Boolean, default: false } }
+  },
+  // Current activity (game, application, etc.)
+  currentActivity: {
+    type: { type: String, enum: ['game', 'application', 'streaming', 'listening', 'watching', 'custom'], default: null },
+    name: { type: String, default: null },
+    details: { type: String, default: null },
+    startedAt: { type: Date, default: null },
+    appId: { type: String, default: null }
+  },
+  // Two-factor authentication
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String,
+    default: null
+  },
+  twoFactorBackupCodes: [{
+    code: String,
+    used: { type: Boolean, default: false }
+  }],
+  // User preferences
+  theme: {
+    type: String,
+    default: 'dark'
   },
   audioSettings: {
     inputVolume: { type: Number, default: 100, min: 0, max: 200 },
@@ -129,6 +172,10 @@ userSchema.methods.toPublicProfile = function() {
     status: this.status,
     customStatus: this.customStatus,
     steamId: this.steamId,
+    steamVerified: this.steamVerified,
+    socialAccounts: this.socialAccounts,
+    currentActivity: this.currentActivity,
+    theme: this.theme,
     role: this.role,
     createdAt: this.createdAt
   };

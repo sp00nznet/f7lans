@@ -1,6 +1,55 @@
 // F7Lans Electron Client
 // Desktop Application for F7Lans Gaming Community
 
+// Audio context for notification sounds
+let audioContext = null;
+
+function getAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioContext;
+}
+
+// Play notification tone for voice channel events
+function playVoiceNotification(type) {
+  // Check if sounds are enabled in settings
+  if (state.settings?.enableSounds === false) return;
+
+  try {
+    const ctx = getAudioContext();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    // Set volume (soft notification)
+    gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+
+    if (type === 'join') {
+      // Rising tone for join - pleasant soft chime
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(440, ctx.currentTime); // A4
+      oscillator.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.2);
+    } else if (type === 'leave') {
+      // Falling tone for leave - soft descending tone
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(660, ctx.currentTime); // E5
+      oscillator.frequency.linearRampToValueAtTime(330, ctx.currentTime + 0.15); // E4
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.2);
+    }
+  } catch (e) {
+    // Audio not supported or blocked, silently ignore
+    console.log('Audio notification not available');
+  }
+}
+
 // State
 const state = {
   user: null,
@@ -25,7 +74,13 @@ const state = {
     audioInputs: [],
     audioOutputs: [],
     videoInputs: []
-  }
+  },
+  // Multi-server support
+  servers: [], // Array of { id, name, url, token, user, icon }
+  currentServerId: null,
+  theme: 'dark', // Current theme
+  // Pending attachments for current message
+  pendingAttachments: []
 };
 
 // Initialize application
@@ -35,13 +90,26 @@ async function init() {
     state.settings = await window.electronAPI.getSettings();
     state.serverUrl = state.settings.serverUrl;
     state.token = state.settings.token;
+    state.servers = state.settings.servers || [];
+    state.theme = state.settings.theme || 'dark';
+
+    // Apply saved theme
+    applyTheme(state.theme);
 
     // Set up IPC listeners
     setupIPCListeners();
   }
 
-  // If we have a token, try to auto-login
-  if (state.token && state.serverUrl) {
+  // If we have saved servers, try to auto-connect to the first one
+  if (state.servers.length > 0) {
+    const firstServer = state.servers[0];
+    state.serverUrl = firstServer.url;
+    state.token = firstServer.token;
+    state.currentServerId = firstServer.id;
+    document.getElementById('serverUrl').value = firstServer.url;
+    tryAutoLogin();
+  } else if (state.token && state.serverUrl) {
+    // Legacy single server support
     document.getElementById('serverUrl').value = state.serverUrl;
     tryAutoLogin();
   }
@@ -273,11 +341,13 @@ function connectSocket() {
   // Voice handlers
   state.socket.on('voice:userJoined', (data) => {
     showToast(`${data.user.displayName || data.user.username} joined voice`, 'info');
+    playVoiceNotification('join');
     renderVoiceUsers();
     loadChannels(); // Refresh channel user counts
   });
 
   state.socket.on('voice:userLeft', (data) => {
+    playVoiceNotification('leave');
     renderVoiceUsers();
     loadChannels();
   });
@@ -293,21 +363,38 @@ function showMainApp() {
   document.getElementById('mainApp').style.display = 'grid';
 
   renderMainApp();
+
+  // Initialize drag-drop after render
+  setTimeout(() => setupDragDrop(), 100);
 }
 
 // Render main application
 function renderMainApp() {
   const mainApp = document.getElementById('mainApp');
 
+  const currentServer = state.servers.find(s => s.id === state.currentServerId);
+  const serverName = currentServer?.name || 'F7Lans';
+
   mainApp.innerHTML = `
     <nav class="server-list">
-      <div class="server-icon active" title="F7Lans Home">F7</div>
+      ${state.servers.map(server => `
+        <div class="server-icon ${server.id === state.currentServerId ? 'active' : ''}"
+             title="${escapeHtml(server.name)}"
+             onclick="switchServer('${server.id}')"
+             data-server-id="${server.id}">
+          ${server.icon || server.name.substring(0, 2).toUpperCase()}
+        </div>
+      `).join('')}
+      ${state.servers.length === 0 ? `
+        <div class="server-icon active" title="F7Lans Home">F7</div>
+      ` : ''}
       <div class="server-divider"></div>
+      <div class="server-icon add-server" title="Add Server" onclick="openAddServerModal()">+</div>
     </nav>
 
     <aside class="channel-sidebar">
-      <div class="server-header">
-        <h2>F7Lans</h2>
+      <div class="server-header" onclick="openServerMenu(event)">
+        <h2>${escapeHtml(serverName)}</h2>
         <span>▼</span>
       </div>
 
@@ -364,10 +451,10 @@ function renderMainApp() {
       <div class="message-input-container">
         <div class="message-input-wrapper">
           <div class="input-actions-left">
-            <button class="input-btn" title="Attach">➕</button>
+            <button class="input-btn" title="Attach Image" onclick="openFilePicker()">➕</button>
           </div>
           <textarea class="message-input" id="messageInput"
-            placeholder="Message #general"
+            placeholder="Message #general (drag images to attach)"
             rows="1"
             onkeydown="handleInputKeyDown(event)"></textarea>
           <div class="input-actions-right">
@@ -1014,18 +1101,158 @@ function handleInputKeyDown(e) {
   }
 }
 
-function sendMessage() {
+async function sendMessage() {
   const input = document.getElementById('messageInput');
   const content = input.value.trim();
 
-  if (!content || !state.currentChannel || !state.socket) return;
+  if ((!content && state.pendingAttachments.length === 0) || !state.currentChannel || !state.socket) return;
 
-  state.socket.emit('message:send', {
+  const messageData = {
     channelId: state.currentChannel._id,
     content
+  };
+
+  // Include attachments if any
+  if (state.pendingAttachments.length > 0) {
+    messageData.attachments = state.pendingAttachments;
+  }
+
+  state.socket.emit('message:send', messageData);
+
+  // Clear input and attachments
+  input.value = '';
+  state.pendingAttachments = [];
+  renderAttachmentPreview();
+}
+
+// File attachment handling
+function setupDragDrop() {
+  const messagesArea = document.getElementById('messagesArea');
+  const inputContainer = document.querySelector('.message-input-container');
+
+  if (!messagesArea || !inputContainer) return;
+
+  // Prevent default drag behaviors
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+    document.body.addEventListener(event, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
   });
 
-  input.value = '';
+  // Highlight drop zone
+  ['dragenter', 'dragover'].forEach(event => {
+    messagesArea.addEventListener(event, () => {
+      messagesArea.classList.add('drag-highlight');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(event => {
+    messagesArea.addEventListener(event, () => {
+      messagesArea.classList.remove('drag-highlight');
+    });
+  });
+
+  // Handle file drop
+  messagesArea.addEventListener('drop', handleFileDrop);
+  inputContainer.addEventListener('drop', handleFileDrop);
+}
+
+async function handleFileDrop(e) {
+  const files = e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+
+  await uploadFiles(Array.from(files));
+}
+
+// Open file picker
+function openFilePicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = 'image/*,.gif';
+
+  input.onchange = async (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await uploadFiles(Array.from(e.target.files));
+    }
+  };
+
+  input.click();
+}
+
+async function uploadFiles(files) {
+  // Filter to only images
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+  if (imageFiles.length === 0) {
+    showToast('Only images and GIFs are supported', 'error');
+    return;
+  }
+
+  if (imageFiles.length + state.pendingAttachments.length > 5) {
+    showToast('Maximum 5 images per message', 'error');
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    imageFiles.forEach(file => formData.append('files', file));
+
+    const response = await fetch(`${state.serverUrl}/api/attachments/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Upload failed');
+    }
+
+    const data = await response.json();
+    state.pendingAttachments.push(...data.attachments);
+    renderAttachmentPreview();
+    showToast(`${data.attachments.length} image(s) ready to send`, 'success');
+  } catch (error) {
+    console.error('Upload error:', error);
+    showToast(error.message || 'Failed to upload files', 'error');
+  }
+}
+
+function renderAttachmentPreview() {
+  let previewContainer = document.getElementById('attachmentPreview');
+
+  if (!previewContainer) {
+    const inputWrapper = document.querySelector('.message-input-wrapper');
+    if (!inputWrapper) return;
+
+    previewContainer = document.createElement('div');
+    previewContainer.id = 'attachmentPreview';
+    previewContainer.className = 'attachment-preview';
+    inputWrapper.insertBefore(previewContainer, inputWrapper.firstChild);
+  }
+
+  if (state.pendingAttachments.length === 0) {
+    previewContainer.style.display = 'none';
+    previewContainer.innerHTML = '';
+    return;
+  }
+
+  previewContainer.style.display = 'flex';
+  previewContainer.innerHTML = state.pendingAttachments.map((att, index) => `
+    <div class="attachment-preview-item">
+      <img src="${state.serverUrl}${att.url}" alt="${escapeHtml(att.filename)}" />
+      <button class="remove-attachment" onclick="removeAttachment(${index})" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeAttachment(index) {
+  state.pendingAttachments.splice(index, 1);
+  renderAttachmentPreview();
 }
 
 // Settings modal
@@ -3917,6 +4144,355 @@ function getRoleColor(role) {
     case 'admin': return '#ff6b6b';
     default: return '#ffffff';
   }
+}
+
+// ==================== Multi-Server Support ====================
+async function switchServer(serverId) {
+  const server = state.servers.find(s => s.id === serverId);
+  if (!server) return;
+
+  // Disconnect from current server
+  if (state.socket) {
+    state.socket.disconnect();
+  }
+
+  // Leave voice if connected
+  if (state.inVoice) {
+    await leaveVoice();
+  }
+
+  // Switch to new server
+  state.currentServerId = serverId;
+  state.serverUrl = server.url;
+  state.token = server.token;
+  state.user = server.user;
+  state.channels = [];
+  state.messages = [];
+  state.currentChannel = null;
+
+  // Connect to new server
+  setupSocketConnection();
+  renderMainApp();
+
+  // Fetch channels
+  await loadChannels();
+
+  showToast(`Switched to ${server.name}`, 'success');
+}
+
+function openAddServerModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Add Server</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <h3>Connect to a Server</h3>
+        <p style="color: var(--text-muted); margin-bottom: 16px;">Enter the server URL and your credentials to add a new server.</p>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label>Server URL</label>
+          <input type="text" id="addServerUrl" placeholder="http://localhost:3001" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label>Username</label>
+          <input type="text" id="addServerUsername" placeholder="Username" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label>Password</label>
+          <input type="password" id="addServerPassword" placeholder="Password" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+
+        <button class="btn-primary" onclick="addServer()" style="width: 100%;">Connect</button>
+      </div>
+
+      ${state.servers.length > 0 ? `
+      <div class="settings-section" style="margin-top: 20px;">
+        <h3>Your Servers (${state.servers.length})</h3>
+        <div style="margin-top: 12px;">
+          ${state.servers.map(server => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--accent-primary); display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                  ${server.icon || server.name.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div style="font-weight: 500;">${escapeHtml(server.name)}</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(server.url)}</div>
+                </div>
+              </div>
+              <button class="btn-danger" onclick="removeServer('${server.id}')" style="padding: 4px 8px; font-size: 12px;">Remove</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function addServer() {
+  const url = document.getElementById('addServerUrl').value.trim();
+  const username = document.getElementById('addServerUsername').value.trim();
+  const password = document.getElementById('addServerPassword').value;
+
+  if (!url || !username || !password) {
+    showToast('Please fill in all fields', 'error');
+    return;
+  }
+
+  try {
+    // Try to login to the server
+    const response = await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Login failed');
+
+    // Get server info
+    let serverName = 'F7Lans Server';
+    try {
+      const infoRes = await fetch(`${url}/api/federation/info`);
+      const infoData = await infoRes.json();
+      serverName = infoData.name || serverName;
+    } catch (e) {
+      // Use default name
+    }
+
+    // Create server entry
+    const serverId = 'server_' + Date.now();
+    const newServer = {
+      id: serverId,
+      name: serverName,
+      url: url,
+      token: data.token,
+      user: data.user,
+      icon: null
+    };
+
+    state.servers.push(newServer);
+    await saveServers();
+
+    // Switch to new server
+    state.currentServerId = serverId;
+    state.serverUrl = url;
+    state.token = data.token;
+    state.user = data.user;
+
+    closeModal();
+    setupSocketConnection();
+    showMainApp();
+    await loadChannels();
+
+    showToast(`Connected to ${serverName}!`, 'success');
+  } catch (error) {
+    showToast('Failed to connect: ' + error.message, 'error');
+  }
+}
+
+async function removeServer(serverId) {
+  if (!confirm('Are you sure you want to remove this server?')) return;
+
+  const serverIndex = state.servers.findIndex(s => s.id === serverId);
+  if (serverIndex === -1) return;
+
+  state.servers.splice(serverIndex, 1);
+  await saveServers();
+
+  // If we removed the current server, switch to another or show connection screen
+  if (state.currentServerId === serverId) {
+    if (state.servers.length > 0) {
+      await switchServer(state.servers[0].id);
+    } else {
+      disconnect();
+    }
+  }
+
+  showToast('Server removed', 'success');
+  openAddServerModal(); // Refresh the modal
+}
+
+async function saveServers() {
+  if (window.electronAPI) {
+    const settings = await window.electronAPI.getSettings();
+    settings.servers = state.servers;
+    await window.electronAPI.saveSettings(settings);
+  }
+}
+
+function openServerMenu(event) {
+  event.stopPropagation();
+  // Could show a dropdown menu with server options
+  showToast('Server options coming soon', 'info');
+}
+
+// ==================== Theming System ====================
+const themes = {
+  dark: {
+    name: 'Dark',
+    vars: {
+      '--bg-darkest': '#1a1a2e',
+      '--bg-darker': '#1e1e32',
+      '--bg-dark': '#252538',
+      '--bg-medium': '#2a2a42',
+      '--bg-light': '#32324a',
+      '--bg-lighter': '#3a3a52',
+      '--text-primary': '#ffffff',
+      '--text-secondary': '#b3b3b3',
+      '--text-muted': '#72727e',
+      '--accent-primary': '#ff8c00',
+      '--accent-secondary': '#ff6b00',
+      '--success': '#4ecdc4',
+      '--danger': '#ff6b6b',
+      '--warning': '#ffd93d'
+    }
+  },
+  midnight: {
+    name: 'Midnight Blue',
+    vars: {
+      '--bg-darkest': '#0d1117',
+      '--bg-darker': '#161b22',
+      '--bg-dark': '#21262d',
+      '--bg-medium': '#30363d',
+      '--bg-light': '#484f58',
+      '--bg-lighter': '#6e7681',
+      '--text-primary': '#f0f6fc',
+      '--text-secondary': '#8b949e',
+      '--text-muted': '#6e7681',
+      '--accent-primary': '#58a6ff',
+      '--accent-secondary': '#1f6feb',
+      '--success': '#3fb950',
+      '--danger': '#f85149',
+      '--warning': '#d29922'
+    }
+  },
+  forest: {
+    name: 'Forest',
+    vars: {
+      '--bg-darkest': '#1a1f16',
+      '--bg-darker': '#232b1e',
+      '--bg-dark': '#2d3726',
+      '--bg-medium': '#374430',
+      '--bg-light': '#44523a',
+      '--bg-lighter': '#536347',
+      '--text-primary': '#e8f5e9',
+      '--text-secondary': '#a5d6a7',
+      '--text-muted': '#81c784',
+      '--accent-primary': '#66bb6a',
+      '--accent-secondary': '#43a047',
+      '--success': '#4caf50',
+      '--danger': '#ef5350',
+      '--warning': '#ffca28'
+    }
+  },
+  crimson: {
+    name: 'Crimson',
+    vars: {
+      '--bg-darkest': '#1a1214',
+      '--bg-darker': '#241a1c',
+      '--bg-dark': '#2e2224',
+      '--bg-medium': '#3a2a2c',
+      '--bg-light': '#4a3638',
+      '--bg-lighter': '#5c4446',
+      '--text-primary': '#ffeaea',
+      '--text-secondary': '#ffb3b3',
+      '--text-muted': '#cc8080',
+      '--accent-primary': '#e53935',
+      '--accent-secondary': '#c62828',
+      '--success': '#4caf50',
+      '--danger': '#ff5252',
+      '--warning': '#ffc107'
+    }
+  },
+  light: {
+    name: 'Light',
+    vars: {
+      '--bg-darkest': '#ffffff',
+      '--bg-darker': '#f5f5f5',
+      '--bg-dark': '#eeeeee',
+      '--bg-medium': '#e0e0e0',
+      '--bg-light': '#d0d0d0',
+      '--bg-lighter': '#c0c0c0',
+      '--text-primary': '#1a1a1a',
+      '--text-secondary': '#4a4a4a',
+      '--text-muted': '#757575',
+      '--accent-primary': '#ff8c00',
+      '--accent-secondary': '#f57c00',
+      '--success': '#2e7d32',
+      '--danger': '#c62828',
+      '--warning': '#f9a825'
+    }
+  }
+};
+
+function applyTheme(themeName) {
+  const theme = themes[themeName] || themes.dark;
+  const root = document.documentElement;
+
+  Object.entries(theme.vars).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+
+  state.theme = themeName;
+}
+
+async function setTheme(themeName) {
+  applyTheme(themeName);
+
+  if (window.electronAPI) {
+    const settings = await window.electronAPI.getSettings();
+    settings.theme = themeName;
+    await window.electronAPI.saveSettings(settings);
+  }
+
+  showToast(`Theme changed to ${themes[themeName]?.name || themeName}`, 'success');
+}
+
+function openThemeSelector() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Choose Theme</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+        ${Object.entries(themes).map(([key, theme]) => `
+          <div onclick="setTheme('${key}'); closeModal();"
+               style="padding: 16px; background: ${theme.vars['--bg-dark']}; border-radius: var(--radius-sm); cursor: pointer; border: 2px solid ${state.theme === key ? 'var(--accent-primary)' : 'transparent'};">
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: ${theme.vars['--bg-darkest']};"></div>
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: ${theme.vars['--accent-primary']};"></div>
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: ${theme.vars['--text-primary']};"></div>
+            </div>
+            <div style="color: ${theme.vars['--text-primary']}; font-weight: 500;">${theme.name}</div>
+            ${state.theme === key ? '<div style="color: var(--accent-primary); font-size: 11px; margin-top: 4px;">Current</div>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
 }
 
 // Initialize on load
