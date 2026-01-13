@@ -14,8 +14,6 @@ const apiRoutes = require('./routes/api');
 const { initializeSocket } = require('./socket/socketHandler');
 const User = require('./models/User');
 const Channel = require('./models/Channel');
-const FederationService = require('./services/federationService');
-const { getServerId } = require('./config/federation');
 
 const app = express();
 
@@ -23,6 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const ENABLE_HTTPS = process.env.ENABLE_HTTPS === 'true';
+const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
 
 // Middleware
 app.use(helmet({
@@ -49,14 +48,12 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api', apiRoutes);
 
 // Health check
-app.get('/health', async (req, res) => {
-  const serverId = await getServerId();
+app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     name: 'F7Lans Server',
     version: '1.0.0',
-    serverId: serverId,
-    federationEnabled: true,
+    federationEnabled: FEDERATION_ENABLED,
     timestamp: new Date().toISOString()
   });
 });
@@ -94,8 +91,8 @@ const io = new Server(server, {
 // Initialize socket handlers
 initializeSocket(io);
 
-// Initialize federation service
-const federationService = new FederationService(io);
+// Federation service (optional)
+let federationService = null;
 
 // Database and server startup
 const startServer = async () => {
@@ -141,10 +138,19 @@ const startServer = async () => {
       console.log('Default channels created');
     }
 
-    // Initialize federation service (reconnect to federated servers)
-    const serverId = await getServerId();
-    await federationService.initialize();
-    console.log(`Federation initialized. Server ID: ${serverId}`);
+    // Initialize federation if enabled
+    let federationStatus = 'Disabled';
+    if (FEDERATION_ENABLED) {
+      try {
+        const { FederationService } = require('./services/federationService');
+        federationService = new FederationService(io);
+        await federationService.initialize();
+        federationStatus = 'Enabled';
+      } catch (err) {
+        console.error('Federation failed to initialize:', err.message);
+        federationStatus = 'Failed';
+      }
+    }
 
     // Start server
     server.listen(PORT, '0.0.0.0', () => {
@@ -156,8 +162,7 @@ const startServer = async () => {
 ║   Server running on port ${PORT}                            ║
 ║   ${ENABLE_HTTPS ? 'HTTPS' : 'HTTP'}: ${ENABLE_HTTPS ? 'https' : 'http'}://localhost:${PORT}                       ║
 ║                                                           ║
-║   Federation: Enabled                                     ║
-║   Server ID: ${serverId.substring(0, 20)}...              ║
+║   Federation: ${federationStatus.padEnd(8)}                               ║
 ║                                                           ║
 ║   Default Admin: admin / admin123                         ║
 ║   (Change password after first login!)                    ║
@@ -177,9 +182,10 @@ startServer();
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
 
-  // Disconnect from federated servers
-  await federationService.shutdown();
-  console.log('Federation connections closed');
+  if (federationService) {
+    await federationService.shutdown();
+    console.log('Federation connections closed');
+  }
 
   server.close(() => {
     console.log('Server closed');
@@ -189,7 +195,9 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
-  await federationService.shutdown();
+  if (federationService) {
+    await federationService.shutdown();
+  }
   server.close(() => {
     process.exit(0);
   });
