@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, desktopCapturer } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -267,6 +267,28 @@ function setupIPC() {
   ipcMain.on('flash-window', () => {
     if (mainWindow && !mainWindow.isFocused()) {
       mainWindow.flashFrame(true);
+    }
+  });
+
+  // Get screen sources for screen sharing
+  ipcMain.handle('get-screen-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: true
+      });
+
+      return sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL(),
+        appIcon: source.appIcon ? source.appIcon.toDataURL() : null,
+        display_id: source.display_id
+      }));
+    } catch (error) {
+      console.error('Failed to get screen sources:', error);
+      throw error;
     }
   });
 }
