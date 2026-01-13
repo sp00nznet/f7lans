@@ -1,6 +1,15 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, desktopCapturer } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
+const { spawn } = require('child_process');
+
+// Check if running in embedded server mode
+const EMBEDDED_SERVER = process.env.F7LANS_EMBEDDED_SERVER === 'true' || process.argv.includes('--embedded-server');
+const HEADLESS_MODE = process.env.F7LANS_HEADLESS === 'true' || process.argv.includes('--headless');
+const SERVER_PORT = process.env.F7LANS_PORT || 3001;
+
+// Server process reference
+let serverProcess = null;
 
 // Initialize settings store
 const store = new Store({
@@ -293,21 +302,147 @@ function setupIPC() {
   });
 }
 
+// Start embedded server
+async function startEmbeddedServer() {
+  return new Promise((resolve, reject) => {
+    console.log('Starting embedded F7Lans server...');
+
+    // Determine server path - in packaged app, it's in resources
+    let serverPath;
+    if (app.isPackaged) {
+      serverPath = path.join(process.resourcesPath, 'server');
+    } else {
+      serverPath = path.join(__dirname, '..', 'server');
+    }
+
+    const serverScript = path.join(serverPath, 'index.js');
+
+    // Set environment variables
+    const env = {
+      ...process.env,
+      PORT: SERVER_PORT,
+      NODE_ENV: 'production',
+      F7LANS_DATA_DIR: app.getPath('userData')
+    };
+
+    serverProcess = spawn('node', [serverScript], {
+      cwd: serverPath,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    serverProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log('[Server]', output);
+      if (output.includes('Server running on port')) {
+        resolve();
+      }
+    });
+
+    serverProcess.stderr.on('data', (data) => {
+      console.error('[Server Error]', data.toString());
+    });
+
+    serverProcess.on('error', (err) => {
+      console.error('Failed to start server:', err);
+      reject(err);
+    });
+
+    serverProcess.on('exit', (code) => {
+      console.log(`Server exited with code ${code}`);
+      serverProcess = null;
+    });
+
+    // Resolve after timeout if server doesn't signal ready
+    setTimeout(() => resolve(), 5000);
+  });
+}
+
+// Stop embedded server
+function stopEmbeddedServer() {
+  if (serverProcess) {
+    console.log('Stopping embedded server...');
+    serverProcess.kill('SIGTERM');
+    serverProcess = null;
+  }
+}
+
 // App ready
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-  registerShortcuts();
+app.whenReady().then(async () => {
+  // Start embedded server if enabled
+  if (EMBEDDED_SERVER) {
+    try {
+      await startEmbeddedServer();
+      // Update default server URL to localhost
+      store.set('serverUrl', `http://localhost:${SERVER_PORT}`);
+    } catch (err) {
+      console.error('Failed to start embedded server:', err);
+    }
+  }
+
+  // In headless mode, don't create window
+  if (!HEADLESS_MODE) {
+    createWindow();
+    createTray();
+    registerShortcuts();
+  } else {
+    console.log('Running in headless server mode');
+    // Create minimal tray for server control
+    createHeadlessTray();
+  }
+
   setupIPC();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    } else if (mainWindow) {
-      mainWindow.show();
+    if (!HEADLESS_MODE) {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      } else if (mainWindow) {
+        mainWindow.show();
+      }
     }
   });
 });
+
+// Create headless mode tray
+function createHeadlessTray() {
+  const size = 16;
+  const canvas = Buffer.alloc(size * size * 4);
+  for (let i = 0; i < size * size; i++) {
+    canvas[i * 4] = 255;     // R
+    canvas[i * 4 + 1] = 140; // G
+    canvas[i * 4 + 2] = 0;   // B
+    canvas[i * 4 + 3] = 255; // A
+  }
+  const trayIcon = nativeImage.createFromBuffer(canvas, { width: size, height: size });
+
+  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: `F7Lans Server (Port ${SERVER_PORT})`,
+      enabled: false
+    },
+    { type: 'separator' },
+    {
+      label: 'Open Web Interface',
+      click: () => {
+        require('electron').shell.openExternal(`http://localhost:${SERVER_PORT}`);
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit Server',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setToolTip(`F7Lans Server - Port ${SERVER_PORT}`);
+  tray.setContextMenu(contextMenu);
+}
 
 // Quit when all windows are closed (except macOS)
 app.on('window-all-closed', () => {
@@ -319,6 +454,7 @@ app.on('window-all-closed', () => {
 // Before quit
 app.on('before-quit', () => {
   isQuitting = true;
+  stopEmbeddedServer();
 });
 
 // Unregister shortcuts on quit

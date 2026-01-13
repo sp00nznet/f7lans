@@ -177,6 +177,39 @@ const getPinnedMessages = async (req, res) => {
   }
 };
 
+// Kick user from channel (voice channel)
+const kickUser = async (req, res) => {
+  try {
+    const { channelId, userId } = req.params;
+    const io = req.app.get('io');
+
+    // Verify channel exists
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Emit kick event to the user
+    io.to(`user:${userId}`).emit('channel:kicked', {
+      channelId,
+      channelName: channel.name,
+      kickedBy: req.user.username
+    });
+
+    // Emit to channel so everyone knows
+    io.to(`channel:${channelId}`).emit('user:kicked', {
+      channelId,
+      userId,
+      kickedBy: req.user.username
+    });
+
+    res.json({ success: true, message: 'User kicked from channel' });
+  } catch (error) {
+    console.error('Kick user error:', error);
+    res.status(500).json({ error: 'Failed to kick user' });
+  }
+};
+
 module.exports = {
   getChannels,
   getChannel,
@@ -184,5 +217,6 @@ module.exports = {
   updateChannel,
   deleteChannel,
   getMessages,
-  getPinnedMessages
+  getPinnedMessages,
+  kickUser
 };

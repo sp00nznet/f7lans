@@ -8,6 +8,7 @@ const channelController = require('../controllers/channelController');
 const userController = require('../controllers/userController');
 const federationController = require('../controllers/federationController');
 const youtubeBotController = require('../controllers/youtubeBotController');
+const plexBotController = require('../controllers/plexBotController');
 
 const router = express.Router();
 
@@ -112,6 +113,19 @@ router.post('/admin/youtube-bot/play', authenticate, adminOnly, youtubeBotContro
 router.post('/admin/youtube-bot/stop', authenticate, adminOnly, youtubeBotController.stop);
 router.get('/admin/youtube-bot/video-info', authenticate, adminOnly, youtubeBotController.getVideoInfo);
 router.get('/admin/youtube-bot/stream-url', authenticate, youtubeBotController.getStreamUrl);
+
+// ===== Plex Bot Routes =====
+router.get('/admin/plex-bot/status', authenticate, adminOnly, plexBotController.getStatus);
+router.post('/admin/plex-bot/enable', authenticate, adminOnly, plexBotController.setEnabled);
+router.post('/admin/plex-bot/connect', authenticate, adminOnly, plexBotController.connect);
+router.post('/admin/plex-bot/disconnect', authenticate, adminOnly, plexBotController.disconnect);
+router.get('/admin/plex-bot/search', authenticate, adminOnly, plexBotController.search);
+router.post('/admin/plex-bot/play', authenticate, adminOnly, plexBotController.play);
+router.post('/admin/plex-bot/stop', authenticate, adminOnly, plexBotController.stop);
+router.get('/admin/plex-bot/thumb', authenticate, plexBotController.getThumb);
+
+// ===== Channel Moderation Routes =====
+router.post('/channels/:channelId/kick/:userId', authenticate, adminOnly, channelController.kickUser);
 
 // Health check
 router.get('/health', (req, res) => {

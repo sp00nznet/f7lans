@@ -1,0 +1,55 @@
+{
+  "appId": "com.f7lans.unified",
+  "productName": "F7Lans",
+  "directories": {
+    "output": "dist/unified"
+  },
+  "files": [
+    "**/*",
+    "!dist/**",
+    "!scripts/**"
+  ],
+  "extraResources": [
+    {
+      "from": "server",
+      "to": "server",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.ico"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "icon": "assets/icon.icns",
+    "category": "public.app-category.social-networking",
+    "entitlements": "entitlements.mac.plist",
+    "entitlementsInherit": "entitlements.mac.plist"
+  },
+  "linux": {
+    "target": ["AppImage", "deb", "tar.gz"],
+    "icon": "assets/icon.png",
+    "category": "Network"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "F7Lans",
+    "include": "installer.nsh"
+  },
+  "env": {
+    "F7LANS_EMBEDDED_SERVER": "true"
+  }
+}

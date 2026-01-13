@@ -97,6 +97,9 @@ let federationService = null;
 // YouTube bot service
 let youtubeBotService = null;
 
+// Plex bot service
+let plexBotService = null;
+
 // Database and server startup
 const startServer = async () => {
   try {
@@ -164,6 +167,17 @@ const startServer = async () => {
       console.log('YouTube bot service initialized');
     } catch (err) {
       console.error('YouTube bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Plex bot service
+    try {
+      const { PlexBotService } = require('./services/plexBotService');
+      const plexBotController = require('./controllers/plexBotController');
+      plexBotService = new PlexBotService(io);
+      plexBotController.initialize(plexBotService);
+      console.log('Plex bot service initialized');
+    } catch (err) {
+      console.error('Plex bot service failed to initialize:', err.message);
     }
 
     // Start server

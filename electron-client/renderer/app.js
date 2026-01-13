@@ -1144,6 +1144,8 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
           <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
           <button class="btn-secondary" onclick="openYouTubeBotModal()">YouTube Bot</button>
+          <button class="btn-secondary" onclick="openPlexBotModal()">Plex Bot</button>
+          <button class="btn-secondary" onclick="openFederationModal()">Federation</button>
         </div>
       </div>
       ` : ''}
@@ -1786,6 +1788,567 @@ async function stopAllYouTubeStreams() {
     openYouTubeBotModal(); // Refresh
   } catch (error) {
     showToast('Failed to stop streams: ' + error.message, 'error');
+  }
+}
+
+// ==================== Plex Bot Modal ====================
+async function openPlexBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Plex Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="plexBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderPlexBotContent(data);
+  } catch (error) {
+    document.getElementById('plexBotContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load Plex bot status: ${error.message}</p>
+    `;
+  }
+}
+
+function renderPlexBotContent(data) {
+  const { enabled, connected, activeStreams, serverInfo } = data;
+  const streamList = activeStreams || [];
+
+  document.getElementById('plexBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Status:</span>
+          <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+            ${enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Plex:</span>
+          <span style="color: ${connected ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+            ${connected ? 'Connected' : 'Not Connected'}
+          </span>
+        </div>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="togglePlexBot(${!enabled})">
+          ${enabled ? 'Disable Bot' : 'Enable Bot'}
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Plex Account</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        ${connected && serverInfo ? `
+          <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+            <div style="font-weight: 600;">${escapeHtml(serverInfo.name || 'Plex Server')}</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              ${serverInfo.libraries?.length || 0} libraries available
+            </div>
+          </div>
+          <button class="btn-danger" onclick="disconnectPlex()">Disconnect Plex</button>
+        ` : `
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="min-width: 100px;">Server URL:</label>
+            <input type="text" id="plexServerUrl" placeholder="http://your-plex:32400" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="min-width: 100px;">Plex Token:</label>
+            <input type="password" id="plexToken" placeholder="Your Plex token" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted);">
+            Get your token from app.plex.tv settings or use plex-token CLI tools
+          </div>
+          <button class="btn-primary" onclick="connectPlex()">Connect to Plex</button>
+        `}
+      </div>
+    </div>
+
+    ${enabled && connected ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Media</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Channel:</label>
+          <select id="plexBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            ${state.channels.filter(c => c.type === 'voice').map(c => `
+              <option value="${c._id}">${escapeHtml(c.name)}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Search:</label>
+          <input type="text" id="plexSearch" placeholder="Search for music, movies..." style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-secondary" onclick="searchPlex()">Search</button>
+        </div>
+        <div id="plexSearchResults" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${streamList.length})</h3>
+      <div id="plexActiveStreams" style="margin-top: 12px;">
+        ${streamList.length > 0 ? streamList.map(stream => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(stream.title || 'Unknown')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                Channel: ${escapeHtml(stream.channelName || stream.channelId)}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="stopPlexStream('${stream.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+      ${streamList.length > 0 ? `
+        <button class="btn-danger" onclick="stopAllPlexStreams()" style="margin-top: 12px;">Stop All Streams</button>
+      ` : ''}
+    </div>
+    ` : ''}
+  `;
+}
+
+async function togglePlexBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/enable`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ enabled })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message, 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to toggle Plex bot: ' + error.message, 'error');
+  }
+}
+
+async function connectPlex() {
+  const serverUrl = document.getElementById('plexServerUrl').value.trim();
+  const token = document.getElementById('plexToken').value.trim();
+
+  if (!serverUrl || !token) {
+    showToast('Please enter server URL and token', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/connect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ serverUrl, token })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Connected to Plex!', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to connect: ' + error.message, 'error');
+  }
+}
+
+async function disconnectPlex() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Disconnected from Plex', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to disconnect: ' + error.message, 'error');
+  }
+}
+
+async function searchPlex() {
+  const query = document.getElementById('plexSearch').value.trim();
+  if (!query) {
+    showToast('Please enter a search query', 'error');
+    return;
+  }
+
+  const resultsDiv = document.getElementById('plexSearchResults');
+  resultsDiv.innerHTML = 'Searching...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/search?query=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    const results = data.results || [];
+    resultsDiv.innerHTML = results.length > 0 ? results.map(item => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer;" onclick="playPlexItem('${item.ratingKey}')">
+        ${item.thumb ? `<img src="${state.serverUrl}/api/admin/plex-bot/thumb?key=${encodeURIComponent(item.thumb)}" style="width: 48px; height: 48px; border-radius: 4px; object-fit: cover;">` : ''}
+        <div style="flex: 1;">
+          <div style="font-weight: 500;">${escapeHtml(item.title)}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(item.type)} ${item.year ? '(' + item.year + ')' : ''}</div>
+        </div>
+        <button class="btn-primary" style="padding: 6px 12px;" onclick="event.stopPropagation(); playPlexItem('${item.ratingKey}')">Play</button>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No results found</p>';
+  } catch (error) {
+    resultsDiv.innerHTML = `<span style="color: var(--danger);">Search failed: ${error.message}</span>`;
+  }
+}
+
+async function playPlexItem(ratingKey) {
+  const channelId = document.getElementById('plexBotChannel').value;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/play`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId, ratingKey })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(`Now playing: ${result.title || 'Media'}`, 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to play: ' + error.message, 'error');
+  }
+}
+
+async function stopPlexStream(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Playback stopped', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to stop: ' + error.message, 'error');
+  }
+}
+
+async function stopAllPlexStreams() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({})
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('All Plex streams stopped', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to stop streams: ' + error.message, 'error');
+  }
+}
+
+// ==================== Federation Modal ====================
+async function openFederationModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Federation</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="federationContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderFederationContent(data);
+  } catch (error) {
+    document.getElementById('federationContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load federation status: ${error.message}</p>
+    `;
+  }
+}
+
+function renderFederationContent(data) {
+  const { enabled, serverId, serverName, servers, pendingRequests } = data;
+
+  document.getElementById('federationContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>This Server</h3>
+      <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-top: 12px;">
+        <div style="font-weight: 600;">${escapeHtml(serverName || 'F7Lans Server')}</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+          ID: ${serverId || 'Unknown'}<br>
+          Federation: ${enabled ? '<span style="color: var(--success);">Enabled</span>' : '<span style="color: var(--danger);">Disabled</span>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Join Federation</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 100px;">Server URL:</label>
+          <input type="text" id="federationTargetUrl" placeholder="https://other-server.com" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" onclick="analyzeFederation()">Analyze</button>
+          <button class="btn-primary" onclick="initiateFederation()">Connect</button>
+        </div>
+        <div id="federationAnalysis" style="display: none; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);"></div>
+      </div>
+    </div>
+
+    ${pendingRequests && pendingRequests.length > 0 ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Pending Requests (${pendingRequests.length})</h3>
+      <div style="margin-top: 12px;">
+        ${pendingRequests.map(req => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(req.fromServer?.name || 'Unknown Server')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(req.fromServer?.url || '')}
+              </div>
+            </div>
+            <button class="btn-primary" onclick="approveFederationRequest('${req._id}')" style="padding: 6px 12px;">Approve</button>
+            <button class="btn-danger" onclick="rejectFederationRequest('${req._id}')" style="padding: 6px 12px;">Reject</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="settings-section">
+      <h3>Connected Servers (${servers?.filter(s => s.status === 'active').length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${servers && servers.length > 0 ? servers.map(server => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: ${server.status === 'active' ? 'var(--success)' : 'var(--danger)'};"></div>
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(server.name)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(server.url)} • ${server.status}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="removeFederatedServer('${server.serverId}')" style="padding: 6px 12px;">Remove</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No federated servers</p>'}
+      </div>
+    </div>
+  `;
+}
+
+async function analyzeFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  const analysisDiv = document.getElementById('federationAnalysis');
+  analysisDiv.style.display = 'block';
+  analysisDiv.innerHTML = 'Analyzing...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    analysisDiv.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 8px;">Server: ${escapeHtml(data.targetServer?.name || 'Unknown')}</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+        Users: ${data.targetServer?.stats?.userCount || 0} •
+        Channels: ${data.targetServer?.stats?.channelCount || 0}
+      </div>
+      ${data.hasConflicts ? `
+        <div style="color: var(--warning); font-size: 12px;">
+          ${data.conflicts.length} channel name conflict(s) detected
+        </div>
+      ` : `
+        <div style="color: var(--success); font-size: 12px;">No conflicts detected</div>
+      `}
+    `;
+  } catch (error) {
+    analysisDiv.innerHTML = `<span style="color: var(--danger);">Analysis failed: ${error.message}</span>`;
+  }
+}
+
+async function initiateFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/initiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message || 'Federation request sent!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Federation failed: ' + error.message, 'error');
+  }
+}
+
+async function approveFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation approved!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to approve: ' + error.message, 'error');
+  }
+}
+
+async function rejectFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ reason: 'Rejected by admin' })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation request rejected', 'info');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to reject: ' + error.message, 'error');
+  }
+}
+
+async function removeFederatedServer(serverId) {
+  if (!confirm('Are you sure you want to remove this federated server?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/servers/${serverId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Server removed from federation', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to remove server: ' + error.message, 'error');
+  }
+}
+
+// ==================== Kick User Function ====================
+async function kickUserFromChannel(userId, channelId) {
+  if (!confirm('Are you sure you want to kick this user from the channel?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/channels/${channelId}/kick/${userId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('User kicked from channel', 'success');
+  } catch (error) {
+    showToast('Failed to kick user: ' + error.message, 'error');
   }
 }
 
