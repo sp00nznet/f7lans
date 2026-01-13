@@ -180,6 +180,61 @@ const startServer = async () => {
       console.error('Plex bot service failed to initialize:', err.message);
     }
 
+    // Initialize Emby bot service
+    try {
+      const { EmbyBotService } = require('./services/embyBotService');
+      const embyBotController = require('./controllers/embyBotController');
+      const embyBotService = new EmbyBotService(io);
+      embyBotController.initialize(embyBotService);
+      console.log('Emby bot service initialized');
+    } catch (err) {
+      console.error('Emby bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Jellyfin bot service
+    try {
+      const { JellyfinBotService } = require('./services/jellyfinBotService');
+      const jellyfinBotController = require('./controllers/jellyfinBotController');
+      const jellyfinBotService = new JellyfinBotService(io);
+      jellyfinBotController.initialize(jellyfinBotService);
+      console.log('Jellyfin bot service initialized');
+    } catch (err) {
+      console.error('Jellyfin bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Chrome bot service
+    try {
+      const { ChromeBotService } = require('./services/chromeBotService');
+      const chromeBotController = require('./controllers/chromeBotController');
+      const chromeBotService = new ChromeBotService(io);
+      chromeBotController.initialize(chromeBotService);
+      console.log('Chrome bot service initialized');
+    } catch (err) {
+      console.error('Chrome bot service failed to initialize:', err.message);
+    }
+
+    // Initialize IPTV bot service
+    try {
+      const { IPTVBotService } = require('./services/iptvBotService');
+      const iptvBotController = require('./controllers/iptvBotController');
+      const iptvBotService = new IPTVBotService(io);
+      iptvBotController.initialize(iptvBotService);
+      console.log('IPTV bot service initialized');
+    } catch (err) {
+      console.error('IPTV bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Spotify bot service
+    try {
+      const { SpotifyBotService } = require('./services/spotifyBotService');
+      const spotifyBotController = require('./controllers/spotifyBotController');
+      const spotifyBotService = new SpotifyBotService(io);
+      spotifyBotController.initialize(spotifyBotService);
+      console.log('Spotify bot service initialized');
+    } catch (err) {
+      console.error('Spotify bot service failed to initialize:', err.message);
+    }
+
     // Start server
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`

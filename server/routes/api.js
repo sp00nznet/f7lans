@@ -9,6 +9,11 @@ const userController = require('../controllers/userController');
 const federationController = require('../controllers/federationController');
 const youtubeBotController = require('../controllers/youtubeBotController');
 const plexBotController = require('../controllers/plexBotController');
+const embyBotController = require('../controllers/embyBotController');
+const jellyfinBotController = require('../controllers/jellyfinBotController');
+const chromeBotController = require('../controllers/chromeBotController');
+const iptvBotController = require('../controllers/iptvBotController');
+const spotifyBotController = require('../controllers/spotifyBotController');
 
 const router = express.Router();
 
@@ -123,6 +128,68 @@ router.get('/admin/plex-bot/search', authenticate, adminOnly, plexBotController.
 router.post('/admin/plex-bot/play', authenticate, adminOnly, plexBotController.play);
 router.post('/admin/plex-bot/stop', authenticate, adminOnly, plexBotController.stop);
 router.get('/admin/plex-bot/thumb', authenticate, plexBotController.getThumb);
+
+// ===== Emby Bot Routes =====
+router.get('/admin/emby-bot/status', authenticate, adminOnly, embyBotController.getStatus);
+router.post('/admin/emby-bot/enable', authenticate, adminOnly, embyBotController.setEnabled);
+router.post('/admin/emby-bot/connect', authenticate, adminOnly, embyBotController.connect);
+router.post('/admin/emby-bot/disconnect', authenticate, adminOnly, embyBotController.disconnect);
+router.get('/admin/emby-bot/search', authenticate, adminOnly, embyBotController.search);
+router.post('/admin/emby-bot/play', authenticate, adminOnly, embyBotController.play);
+router.post('/admin/emby-bot/stop', authenticate, adminOnly, embyBotController.stop);
+
+// ===== Jellyfin Bot Routes =====
+router.get('/admin/jellyfin-bot/status', authenticate, adminOnly, jellyfinBotController.getStatus);
+router.post('/admin/jellyfin-bot/enable', authenticate, adminOnly, jellyfinBotController.setEnabled);
+router.post('/admin/jellyfin-bot/connect', authenticate, adminOnly, jellyfinBotController.connect);
+router.post('/admin/jellyfin-bot/disconnect', authenticate, adminOnly, jellyfinBotController.disconnect);
+router.get('/admin/jellyfin-bot/search', authenticate, adminOnly, jellyfinBotController.search);
+router.post('/admin/jellyfin-bot/play', authenticate, adminOnly, jellyfinBotController.play);
+router.post('/admin/jellyfin-bot/stop', authenticate, adminOnly, jellyfinBotController.stop);
+
+// ===== Chrome Bot Routes =====
+router.get('/admin/chrome-bot/status', authenticate, adminOnly, chromeBotController.getStatus);
+router.post('/admin/chrome-bot/enable', authenticate, adminOnly, chromeBotController.setEnabled);
+router.post('/admin/chrome-bot/start', authenticate, adminOnly, chromeBotController.startSession);
+router.get('/admin/chrome-bot/session/:channelId', authenticate, chromeBotController.getSession);
+router.post('/admin/chrome-bot/navigate', authenticate, chromeBotController.navigate);
+router.post('/admin/chrome-bot/back', authenticate, chromeBotController.goBack);
+router.post('/admin/chrome-bot/forward', authenticate, chromeBotController.goForward);
+router.post('/admin/chrome-bot/refresh', authenticate, chromeBotController.refresh);
+router.post('/admin/chrome-bot/stop', authenticate, adminOnly, chromeBotController.stopSession);
+router.post('/admin/chrome-bot/join', authenticate, chromeBotController.joinSession);
+router.post('/admin/chrome-bot/transfer', authenticate, chromeBotController.transferControl);
+
+// ===== IPTV Bot Routes =====
+router.get('/admin/iptv-bot/status', authenticate, adminOnly, iptvBotController.getStatus);
+router.post('/admin/iptv-bot/enable', authenticate, adminOnly, iptvBotController.setEnabled);
+router.post('/admin/iptv-bot/configure', authenticate, adminOnly, iptvBotController.configure);
+router.get('/admin/iptv-bot/channels', authenticate, iptvBotController.getChannels);
+router.get('/admin/iptv-bot/groups', authenticate, iptvBotController.getGroups);
+router.get('/admin/iptv-bot/epg/:channelId', authenticate, iptvBotController.getEPG);
+router.post('/admin/iptv-bot/play', authenticate, iptvBotController.play);
+router.post('/admin/iptv-bot/change-channel', authenticate, iptvBotController.changeChannel);
+router.post('/admin/iptv-bot/stop', authenticate, iptvBotController.stop);
+router.post('/admin/iptv-bot/recordings', authenticate, iptvBotController.scheduleRecording);
+router.get('/admin/iptv-bot/recordings', authenticate, iptvBotController.getRecordings);
+router.delete('/admin/iptv-bot/recordings/:recordingId', authenticate, iptvBotController.cancelRecording);
+router.post('/admin/iptv-bot/recordings/:recordingId/tag', authenticate, iptvBotController.tagUser);
+
+// ===== Spotify Bot Routes =====
+router.get('/admin/spotify-bot/status', authenticate, adminOnly, spotifyBotController.getStatus);
+router.post('/admin/spotify-bot/enable', authenticate, adminOnly, spotifyBotController.setEnabled);
+router.post('/admin/spotify-bot/configure', authenticate, adminOnly, spotifyBotController.configure);
+router.get('/admin/spotify-bot/auth-url', authenticate, adminOnly, spotifyBotController.getAuthUrl);
+router.post('/admin/spotify-bot/callback', authenticate, adminOnly, spotifyBotController.callback);
+router.post('/admin/spotify-bot/disconnect', authenticate, adminOnly, spotifyBotController.disconnect);
+router.get('/admin/spotify-bot/search', authenticate, spotifyBotController.search);
+router.get('/admin/spotify-bot/playlists', authenticate, spotifyBotController.getPlaylists);
+router.get('/admin/spotify-bot/playlists/:playlistId/tracks', authenticate, spotifyBotController.getPlaylistTracks);
+router.post('/admin/spotify-bot/play', authenticate, spotifyBotController.play);
+router.post('/admin/spotify-bot/queue', authenticate, spotifyBotController.addToQueue);
+router.post('/admin/spotify-bot/skip', authenticate, spotifyBotController.skip);
+router.get('/admin/spotify-bot/queue/:channelId', authenticate, spotifyBotController.getQueue);
+router.post('/admin/spotify-bot/stop', authenticate, spotifyBotController.stop);
 
 // ===== Channel Moderation Routes =====
 router.post('/channels/:channelId/kick/:userId', authenticate, adminOnly, channelController.kickUser);
