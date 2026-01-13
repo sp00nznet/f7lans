@@ -19,7 +19,7 @@ const state = {
   isPTTActive: false,
   localStream: null,
   cameraStream: null,
-  screenStream: null,
+  screenStreams: {}, // Multiple screen shares: { shareId: stream }
   settings: {},
   devices: {
     audioInputs: [],
@@ -728,33 +728,30 @@ async function toggleCamera() {
 }
 
 async function toggleScreenShare() {
-  if (!state.isScreenSharing) {
-    // In Electron, use desktopCapturer API via preload
-    if (window.electronAPI && window.electronAPI.getScreenSources) {
-      try {
-        const sources = await window.electronAPI.getScreenSources();
-        openScreenPickerModal(sources);
-      } catch (error) {
-        console.error('Failed to get screen sources:', error);
-        showToast('Could not get screen sources: ' + error.message, 'error');
-      }
-    } else {
-      // Fallback for web (browser) - use getDisplayMedia
-      try {
-        state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 1920, height: 1080, frameRate: 30 },
-          audio: true
-        });
-        startScreenShare(state.screenStream);
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('Screen share error:', error);
-          showToast('Could not share screen: ' + error.message, 'error');
-        }
-      }
+  // Always allow adding more screen shares - show picker
+  if (window.electronAPI && window.electronAPI.getScreenSources) {
+    try {
+      const sources = await window.electronAPI.getScreenSources();
+      openScreenPickerModal(sources);
+    } catch (error) {
+      console.error('Failed to get screen sources:', error);
+      showToast('Could not get screen sources: ' + error.message, 'error');
     }
   } else {
-    stopScreenShare();
+    // Fallback for web (browser) - use getDisplayMedia
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 1920, height: 1080, frameRate: 30 },
+        audio: true
+      });
+      const shareId = 'screen-' + Date.now();
+      startScreenShare(stream, shareId);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Screen share error:', error);
+        showToast('Could not share screen: ' + error.message, 'error');
+      }
+    }
   }
 }
 
@@ -830,7 +827,7 @@ async function selectScreenSource(sourceId) {
 
   try {
     // Use the selected source with getUserMedia (Electron way)
-    state.screenStream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         mandatory: {
@@ -843,7 +840,14 @@ async function selectScreenSource(sourceId) {
       }
     });
 
-    startScreenShare(state.screenStream);
+    // Generate unique share ID
+    const shareId = 'screen-' + Date.now();
+
+    // Find the source name for the label
+    const source = window._screenSources?.find(s => s.id === sourceId);
+    const label = source?.name || 'Screen Share';
+
+    startScreenShare(stream, shareId, label);
   } catch (error) {
     console.error('Failed to start screen share:', error);
     showToast('Could not share screen: ' + error.message, 'error');
@@ -851,45 +855,56 @@ async function selectScreenSource(sourceId) {
 }
 
 // Start screen sharing with a stream
-function startScreenShare(stream) {
-  state.screenStream = stream;
-  state.isScreenSharing = true;
+function startScreenShare(stream, shareId, label = 'Your Screen') {
+  state.screenStreams[shareId] = stream;
+  state.isScreenSharing = Object.keys(state.screenStreams).length > 0;
 
   if (state.socket) {
-    state.socket.emit('screen:start');
+    state.socket.emit('screen:start', { shareId, label });
   }
 
-  // Add screen share to grid
-  addVideoToGrid('local-screen', stream, 'Your Screen', false);
+  // Add screen share to grid with close button
+  addVideoToGrid(shareId, stream, label, false, true);
 
-  // Handle user stopping share
+  // Handle user stopping share via system
   stream.getVideoTracks()[0].onended = () => {
-    stopScreenShare();
+    stopScreenShare(shareId);
     showToast('Screen sharing stopped', 'info');
   };
 
-  showToast('Screen sharing started', 'success');
+  showToast('Screen sharing started: ' + label, 'success');
   updateVoiceUI();
 }
 
-// Stop screen sharing
-function stopScreenShare() {
-  if (state.screenStream) {
-    state.screenStream.getTracks().forEach(t => t.stop());
-    state.screenStream = null;
+// Stop a specific screen share or all if no shareId
+function stopScreenShare(shareId) {
+  if (shareId) {
+    // Stop specific share
+    if (state.screenStreams[shareId]) {
+      state.screenStreams[shareId].getTracks().forEach(t => t.stop());
+      delete state.screenStreams[shareId];
+      removeVideoFromGrid(shareId);
+    }
+  } else {
+    // Stop all shares
+    for (const id in state.screenStreams) {
+      state.screenStreams[id].getTracks().forEach(t => t.stop());
+      removeVideoFromGrid(id);
+    }
+    state.screenStreams = {};
   }
-  state.isScreenSharing = false;
+
+  state.isScreenSharing = Object.keys(state.screenStreams).length > 0;
 
   if (state.socket) {
-    state.socket.emit('screen:stop');
+    state.socket.emit('screen:stop', { shareId });
   }
 
-  removeVideoFromGrid('local-screen');
   updateVoiceUI();
 }
 
 // Add video element to the video grid
-function addVideoToGrid(id, stream, label, isMirrored = false) {
+function addVideoToGrid(id, stream, label, isMirrored = false, showCloseButton = false) {
   const grid = document.getElementById('videoGrid');
   if (!grid) return;
 
@@ -899,9 +914,11 @@ function addVideoToGrid(id, stream, label, isMirrored = false) {
   const tile = document.createElement('div');
   tile.className = 'video-tile';
   tile.id = `video-tile-${id}`;
+  tile.style.cssText = 'position: relative; background: var(--bg-dark); border-radius: 8px; overflow: hidden;';
   tile.innerHTML = `
-    <video id="video-${id}" autoplay playsinline ${isMirrored ? 'style="transform: scaleX(-1);"' : ''}></video>
-    <div class="video-label">${escapeHtml(label)}</div>
+    <video id="video-${id}" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; ${isMirrored ? 'transform: scaleX(-1);' : ''}"></video>
+    <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
+    ${showCloseButton ? `<button onclick="stopScreenShare('${id}')" style="position: absolute; top: 8px; right: 8px; background: rgba(255,0,0,0.8); border: none; color: white; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;">✕</button>` : ''}
   `;
 
   grid.appendChild(tile);
@@ -1126,6 +1143,7 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
           <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
           <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+          <button class="btn-secondary" onclick="openYouTubeBotModal()">YouTube Bot</button>
         </div>
       </div>
       ` : ''}
@@ -1525,6 +1543,249 @@ async function updateUserRole(userId, role) {
   } catch (error) {
     showToast('Failed to update role: ' + error.message, 'error');
     openAdminPanel(); // Refresh the list
+  }
+}
+
+// YouTube Bot Modal
+async function openYouTubeBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>YouTube Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="youtubeBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  // Load bot status
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderYouTubeBotContent(data);
+  } catch (error) {
+    document.getElementById('youtubeBotContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load YouTube bot status: ${error.message}</p>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+        Make sure the server has ytdl-core installed: <code>npm install @distube/ytdl-core</code>
+      </p>
+    `;
+  }
+}
+
+function renderYouTubeBotContent(data) {
+  const { enabled, activeStreams } = data;
+  const streamList = activeStreams || [];
+
+  document.getElementById('youtubeBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Status:</span>
+          <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+            ${enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleYouTubeBot(${!enabled})">
+          ${enabled ? 'Disable Bot' : 'Enable Bot'}
+        </button>
+      </div>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Video</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Channel:</label>
+          <select id="ytBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            ${state.channels.filter(c => c.type === 'voice').map(c => `
+              <option value="${c._id}">${escapeHtml(c.name)}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">URL:</label>
+          <input type="text" id="ytBotUrl" placeholder="YouTube video URL" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-primary" onclick="playYouTubeVideo()">Play</button>
+          <button class="btn-secondary" onclick="previewYouTubeVideo()">Preview Info</button>
+        </div>
+        <div id="ytVideoPreview" style="display: none; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${streamList.length})</h3>
+      <div id="ytActiveStreams" style="margin-top: 12px;">
+        ${streamList.length > 0 ? streamList.map(stream => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(stream.title || 'Unknown')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                Channel: ${escapeHtml(stream.channelName || stream.channelId)} •
+                By: ${escapeHtml(stream.requestedBy || 'Unknown')}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="stopYouTubeStream('${stream.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+      ${streamList.length > 0 ? `
+        <button class="btn-danger" onclick="stopAllYouTubeStreams()" style="margin-top: 12px;">Stop All Streams</button>
+      ` : ''}
+    </div>
+    ` : `
+    <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+      <p>Enable the bot to play YouTube videos in voice channels.</p>
+    </div>
+    `}
+  `;
+}
+
+async function toggleYouTubeBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/enable`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ enabled })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message, 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to toggle bot: ' + error.message, 'error');
+  }
+}
+
+async function previewYouTubeVideo() {
+  const url = document.getElementById('ytBotUrl').value.trim();
+  if (!url) {
+    showToast('Please enter a YouTube URL', 'error');
+    return;
+  }
+
+  const preview = document.getElementById('ytVideoPreview');
+  preview.style.display = 'block';
+  preview.innerHTML = 'Loading video info...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/video-info?url=${encodeURIComponent(url)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    preview.innerHTML = `
+      <div style="display: flex; gap: 12px;">
+        ${data.thumbnail ? `<img src="${data.thumbnail}" style="width: 120px; height: 68px; border-radius: 4px; object-fit: cover;">` : ''}
+        <div>
+          <div style="font-weight: 600;">${escapeHtml(data.title)}</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+            ${escapeHtml(data.author)} • ${data.duration || 'Unknown duration'}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    preview.innerHTML = `<span style="color: var(--danger);">Failed to load: ${error.message}</span>`;
+  }
+}
+
+async function playYouTubeVideo() {
+  const channelId = document.getElementById('ytBotChannel').value;
+  const url = document.getElementById('ytBotUrl').value.trim();
+
+  if (!channelId) {
+    showToast('Please select a channel', 'error');
+    return;
+  }
+  if (!url) {
+    showToast('Please enter a YouTube URL', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/play`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId, url })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(`Now playing: ${result.title || 'Video'}`, 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to play video: ' + error.message, 'error');
+  }
+}
+
+async function stopYouTubeStream(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Playback stopped', 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to stop: ' + error.message, 'error');
+  }
+}
+
+async function stopAllYouTubeStreams() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({})
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('All streams stopped', 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to stop streams: ' + error.message, 'error');
   }
 }
 

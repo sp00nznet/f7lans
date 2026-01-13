@@ -94,6 +94,9 @@ initializeSocket(io);
 // Federation service (optional)
 let federationService = null;
 
+// YouTube bot service
+let youtubeBotService = null;
+
 // Database and server startup
 const startServer = async () => {
   try {
@@ -150,6 +153,17 @@ const startServer = async () => {
         console.error('Federation failed to initialize:', err.message);
         federationStatus = 'Failed';
       }
+    }
+
+    // Initialize YouTube bot service
+    try {
+      const { YouTubeBotService } = require('./services/youtubeBotService');
+      const youtubeBotController = require('./controllers/youtubeBotController');
+      youtubeBotService = new YouTubeBotService(io);
+      youtubeBotController.initialize(youtubeBotService);
+      console.log('YouTube bot service initialized');
+    } catch (err) {
+      console.error('YouTube bot service failed to initialize:', err.message);
     }
 
     // Start server

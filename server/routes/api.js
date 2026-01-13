@@ -7,6 +7,7 @@ const adminController = require('../controllers/adminController');
 const channelController = require('../controllers/channelController');
 const userController = require('../controllers/userController');
 const federationController = require('../controllers/federationController');
+const youtubeBotController = require('../controllers/youtubeBotController');
 
 const router = express.Router();
 
@@ -103,6 +104,14 @@ router.put('/federation/channels/:channelId/sync', authenticate, adminOnly, fede
 
 router.post('/federation/servers/:serverId/disconnect', authenticate, adminOnly, federationController.disconnectServer);
 router.delete('/federation/servers/:serverId', authenticate, adminOnly, federationController.removeFederation);
+
+// ===== YouTube Bot Routes =====
+router.get('/admin/youtube-bot/status', authenticate, adminOnly, youtubeBotController.getStatus);
+router.post('/admin/youtube-bot/enable', authenticate, adminOnly, youtubeBotController.setEnabled);
+router.post('/admin/youtube-bot/play', authenticate, adminOnly, youtubeBotController.play);
+router.post('/admin/youtube-bot/stop', authenticate, adminOnly, youtubeBotController.stop);
+router.get('/admin/youtube-bot/video-info', authenticate, adminOnly, youtubeBotController.getVideoInfo);
+router.get('/admin/youtube-bot/stream-url', authenticate, youtubeBotController.getStreamUrl);
 
 // Health check
 router.get('/health', (req, res) => {
