@@ -82,7 +82,8 @@ server/
 │   ├── database.js       # MongoDB connection
 │   └── federation.js     # Federation configuration
 ├── middleware/
-│   └── auth.js           # JWT authentication middleware
+│   ├── auth.js           # JWT authentication middleware
+│   └── accessControl.js  # Group-based permission middleware
 ├── models/
 │   ├── User.js           # User schema
 │   ├── Channel.js        # Channel schema
@@ -91,17 +92,37 @@ server/
 │   ├── Invite.js         # Invite schema
 │   └── Federation.js     # Federation schemas
 ├── controllers/
-│   ├── authController.js     # Auth endpoints
-│   ├── userController.js     # User management
-│   ├── channelController.js  # Channel operations
-│   ├── adminController.js    # Admin functions
-│   └── federationController.js # Federation API
+│   ├── authController.js         # Auth endpoints
+│   ├── userController.js         # User management
+│   ├── channelController.js      # Channel operations
+│   ├── adminController.js        # Admin functions
+│   ├── federationController.js   # Federation API
+│   ├── groupController.js        # Group management
+│   ├── fileShareController.js    # File sharing API
+│   ├── youtubeBotController.js   # YouTube bot API
+│   ├── plexBotController.js      # Plex bot API
+│   ├── embyBotController.js      # Emby bot API
+│   ├── jellyfinBotController.js  # Jellyfin bot API
+│   ├── chromeBotController.js    # Chrome bot API
+│   ├── iptvBotController.js      # IPTV bot API
+│   └── spotifyBotController.js   # Spotify bot API
 ├── services/
-│   └── federationService.js  # Federation logic
+│   ├── federationService.js      # Federation logic
+│   ├── groupService.js           # Group & permissions
+│   ├── fileShareService.js       # P2P file sharing
+│   ├── youtubeBotService.js      # YouTube streaming
+│   ├── plexBotService.js         # Plex integration
+│   ├── embyBotService.js         # Emby integration
+│   ├── jellyfinBotService.js     # Jellyfin integration
+│   ├── chromeBotService.js       # Shared browser sessions
+│   ├── iptvBotService.js         # IPTV with EPG
+│   └── spotifyBotService.js      # Spotify integration
 ├── socket/
-│   └── socketHandler.js      # Real-time event handling
+│   └── socketHandler.js          # Real-time event handling
+├── data/
+│   └── groups.json               # Group & permission storage
 └── routes/
-    └── api.js                # Route definitions
+    └── api.js                    # Route definitions
 ```
 
 ### Frontend Components (Web Client)

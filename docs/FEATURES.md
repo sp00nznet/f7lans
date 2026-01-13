@@ -9,6 +9,9 @@ Detailed overview of everything F7Lans can do.
 - [Communication](#communication)
 - [User System](#user-system)
 - [Gaming Integration](#gaming-integration)
+- [Media Bots](#media-bots)
+- [Groups & Access Control](#groups--access-control)
+- [File Sharing](#file-sharing)
 - [Administration](#administration)
 - [Desktop Client](#desktop-client)
 - [Federation](#federation)
@@ -227,6 +230,291 @@ AI-powered game recommendations.
 
 ---
 
+## Media Bots
+
+F7Lans includes 7 built-in media bots. Admins enable bots, and users with permission can use them.
+
+### YouTube Bot
+
+Stream YouTube videos to voice channels.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → YouTube
+2. Enable the bot
+3. (No external configuration required)
+
+**User Features:**
+- Paste YouTube URL to play
+- Preview video info before playing
+- See active streams
+- Stop streams
+
+**How It Works:**
+- Uses ytdl-core to extract stream URLs
+- Audio/video sent to voice channel participants
+- Multiple streams in different channels
+
+### Plex Bot
+
+Stream media from Plex Media Server.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Plex
+2. Enable the bot
+3. Enter Plex server URL and authentication token
+
+**Getting Plex Token:**
+1. Sign in to Plex web app
+2. Open browser developer tools (F12)
+3. Look for `X-Plex-Token` in network requests
+
+**User Features:**
+- Search Plex library
+- Play movies, shows, music
+- See what's currently playing
+- Stop streams
+
+### Emby Bot
+
+Stream media from Emby Media Server.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Emby
+2. Enable the bot
+3. Enter Emby server URL
+4. Enter API key (Settings → API Keys in Emby)
+
+**User Features:**
+- Search library (movies, series, music)
+- Play media in voice channels
+- Thumbnail previews
+- Stop streams
+
+### Jellyfin Bot
+
+Stream media from Jellyfin (open-source Emby alternative).
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Jellyfin
+2. Enable the bot
+3. Enter Jellyfin server URL
+4. Enter API key (Dashboard → API Keys in Jellyfin)
+
+**User Features:**
+- Same as Emby bot
+- Full Jellyfin API support
+
+### IPTV Bot
+
+Watch live TV together with electronic program guide (EPG).
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → IPTV
+2. Enable the bot
+3. Enter M3U playlist URL (from your IPTV provider)
+4. Optionally enter XMLTV EPG URL for TV guide data
+
+**M3U Playlist:**
+Standard format from most IPTV providers:
+```
+#EXTM3U
+#EXTINF:-1 tvg-id="channel1" tvg-logo="..." group-title="News",CNN
+http://stream-url.com/cnn
+#EXTINF:-1 tvg-id="channel2" group-title="Sports",ESPN
+http://stream-url.com/espn
+```
+
+**User Features:**
+- Browse channels by group/category
+- See TV guide (current and upcoming shows)
+- Watch channels in voice channels
+- Change channels
+- Schedule recordings
+- Tag other users on recordings
+
+**Recording System:**
+- Schedule recording by selecting a program
+- Recordings tied to user account
+- Tag other users to notify them
+- View scheduled and completed recordings
+
+### Spotify Bot
+
+Collaborative music playback with Spotify.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Spotify
+2. Enable the bot
+3. Create a Spotify Developer app at https://developer.spotify.com/dashboard
+4. Enter Client ID and Client Secret
+5. Click "Connect to Spotify" to authorize
+
+**Note:** Requires Spotify Premium for full playback features.
+
+**User Features:**
+- Search tracks, albums, playlists
+- Play music in voice channels
+- Add songs to queue
+- Skip current track
+- View queue
+- See user's playlists
+
+**Queue System:**
+- Fair play - users take turns
+- Anyone can add to queue
+- Queue persists until stream stops
+
+### Chrome Bot
+
+Shared browser sessions for collaborative browsing.
+
+**Admin Setup:**
+1. Go to Settings → Administration → Media Bots → Chrome
+2. Enable the bot
+
+**User Features:**
+- Start a shared browser session
+- Navigate to any URL
+- Back/forward navigation
+- Refresh page
+- Transfer control to other users
+- Multiple users watch the same session
+
+**Control Transfer:**
+- One user has control at a time
+- Controller can transfer to anyone in session
+- Great for demos, tutorials, watching videos together
+
+**Use Cases:**
+- Watch YouTube/Twitch together
+- Collaborative shopping
+- Demo websites
+- Browse together in voice chat
+
+---
+
+## Groups & Access Control
+
+Fine-grained permission control for your community.
+
+### Understanding Groups
+
+Groups are collections of users with shared permissions. Users can belong to multiple groups, and their effective permissions are the union of all group permissions.
+
+### Default Groups
+
+**Everyone**
+- All users automatically belong to this group
+- Cannot be deleted
+- Default permissions: voice/text channels
+
+**Admins**
+- Users with admin/superadmin role
+- Full access to all features
+- Cannot be deleted
+
+### Creating Groups
+
+1. Go to Settings → Administration → Groups
+2. Click "Create" button
+3. Enter group name and description
+4. Set initial permissions
+5. Add users to the group
+
+### Group Permissions
+
+| Permission | Description |
+|------------|-------------|
+| `voice-channels` | Join and use voice channels |
+| `text-channels` | Send messages in text channels |
+| `screen-share` | Share screen in voice channels |
+| `youtube-bot` | Use YouTube bot |
+| `plex-bot` | Use Plex bot |
+| `emby-bot` | Use Emby bot |
+| `jellyfin-bot` | Use Jellyfin bot |
+| `chrome-bot` | Use Chrome bot |
+| `iptv-bot` | Use IPTV bot |
+| `spotify-bot` | Use Spotify bot |
+| `file-share` | Share and access shared files |
+| `admin-panel` | Access admin settings |
+
+### Managing Group Membership
+
+**Adding Users:**
+1. Open Groups modal
+2. Click "Members" on target group
+3. Select user from dropdown
+4. Click "Add"
+
+**Removing Users:**
+1. Open group members
+2. Click "Remove" next to user
+3. User loses group permissions immediately
+
+### Best Practices
+
+- Create role-based groups ("Moderators", "Trusted Members", "New Users")
+- Use "Everyone" for base permissions
+- Create specific groups for bot access ("Music Lovers" for Spotify)
+- Review group membership regularly
+
+---
+
+## File Sharing
+
+Peer-to-peer file sharing between community members.
+
+### How It Works
+
+1. Admin enables file sharing globally
+2. Users with `file-share` permission can participate
+3. Users mark local folders as "shared"
+4. Other users browse and download files
+5. Files transfer directly between users (P2P)
+
+### Admin Setup
+
+1. Go to Settings → Administration → Features → File Sharing
+2. Toggle "Enable" to turn on file sharing
+3. Grant `file-share` permission to appropriate groups
+
+### Sharing Folders
+
+**Desktop Client:**
+1. Click the 📁 button in the user panel
+2. Click "Share a Folder"
+3. Select folder using native file picker
+4. Folder appears in your shared list
+
+**Web Client:**
+1. Open file sharing modal
+2. Enter folder path manually
+3. Enter display name for the folder
+
+### Browsing Shared Files
+
+1. Open file sharing (📁 button)
+2. See "Browse Shared Files" section
+3. Click "Browse" on any folder
+4. Navigate through directories
+5. Click "Download" on files
+
+### Important Notes
+
+- Files only available when owner is online
+- Downloads are peer-to-peer (direct between users)
+- Shared folder paths are visible to others
+- Choose what you share carefully
+
+### Security Considerations
+
+- Only share folders you intend to be public
+- Don't share sensitive documents
+- File paths are visible to users with access
+- Consider creating a dedicated "shared" folder
+
+---
+
 ## Administration
 
 ### Role System
@@ -238,7 +526,7 @@ Hierarchical permission system.
 |------|-------------|
 | User | Basic access, messaging |
 | Moderator | Delete messages, kick users |
-| Admin | Manage channels, ban users |
+| Admin | Manage channels, ban users, configure bots |
 | Super Admin | Full control, manage admins |
 
 ### User Management
@@ -252,6 +540,7 @@ Control your community.
 - Ban/unban users
 - View user activity
 - Reset user passwords (super admin)
+- Assign users to groups
 
 ### Channel Management
 
@@ -264,6 +553,7 @@ Organize your server.
 - Reorder channels
 - Set channel permissions
 - Create categories
+- Kick users from voice channels
 
 ### Invite System
 
@@ -302,6 +592,14 @@ Native Windows experience.
 - Windows 10/11
 - 4GB RAM
 - 200MB disk space
+
+### Linux Application
+
+Native Linux support.
+
+**Formats:**
+- AppImage (portable)
+- .deb (Debian/Ubuntu)
 
 ### System Tray
 
@@ -366,6 +664,15 @@ Share any screen or window.
 - Share multiple windows simultaneously
 - Each appears as separate stream
 - Others can choose which to view
+
+### File Sharing Integration
+
+Native folder selection.
+
+**Features:**
+- Click 📁 button in user panel
+- Native folder picker dialog
+- Seamless sharing experience
 
 ### Notifications
 
@@ -476,14 +783,12 @@ Admin controls.
 
 ---
 
-## Upcoming Features
+## Coming Soon
 
-Features planned for future releases:
+Features in development:
 
 - [ ] OAuth providers (Discord, Steam, Google)
-- [ ] YouTube bot for music/video playback
 - [ ] Mobile applications (iOS, Android)
-- [ ] File sharing improvements
 - [ ] Voice channel permissions
 - [ ] Custom emojis
 - [ ] Server templates

@@ -15,6 +15,9 @@ Complete reference for F7Lans REST API and WebSocket events.
   - [Messages](#message-endpoints)
   - [Direct Messages](#direct-message-endpoints)
   - [Admin](#admin-endpoints)
+  - [Groups](#group-endpoints)
+  - [File Sharing](#file-sharing-endpoints)
+  - [Media Bots](#media-bot-endpoints)
   - [Federation](#federation-endpoints)
 - [WebSocket Events](#websocket-events)
 - [Error Handling](#error-handling)
@@ -588,6 +591,431 @@ Response:
     "voice": 5
   }
 }
+```
+
+---
+
+### Group Endpoints
+
+#### Get All Groups
+
+```http
+GET /api/admin/groups
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "groups": [
+    {
+      "id": "everyone",
+      "name": "Everyone",
+      "description": "Default group for all users",
+      "isDefault": true,
+      "createdAt": "..."
+    }
+  ]
+}
+```
+
+#### Create Group
+
+```http
+POST /api/admin/groups
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "name": "Trusted Members",
+  "description": "Users with extra privileges"
+}
+```
+
+#### Get Group Details
+
+```http
+GET /api/admin/groups/:groupId
+Authorization: Bearer <token>
+```
+
+#### Update Group
+
+```http
+PUT /api/admin/groups/:groupId
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "name": "Updated Name",
+  "description": "Updated description"
+}
+```
+
+#### Delete Group
+
+```http
+DELETE /api/admin/groups/:groupId
+Authorization: Bearer <token>
+```
+
+#### Get Group Permissions
+
+```http
+GET /api/admin/groups/:groupId/permissions
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "groupId": "trusted-members",
+  "permissions": {
+    "voice-channels": true,
+    "text-channels": true,
+    "youtube-bot": true,
+    "file-share": true
+  }
+}
+```
+
+#### Set Group Permissions
+
+```http
+PUT /api/admin/groups/:groupId/permissions
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "permissions": {
+    "spotify-bot": true,
+    "file-share": true
+  }
+}
+```
+
+#### Get Group Members
+
+```http
+GET /api/admin/groups/:groupId/members
+Authorization: Bearer <token>
+```
+
+#### Add User to Group
+
+```http
+POST /api/admin/groups/:groupId/users/:userId
+Authorization: Bearer <token>
+```
+
+#### Remove User from Group
+
+```http
+DELETE /api/admin/groups/:groupId/users/:userId
+Authorization: Bearer <token>
+```
+
+#### Get User's Groups
+
+```http
+GET /api/admin/users/:userId/groups
+Authorization: Bearer <token>
+```
+
+#### Set User's Groups
+
+```http
+PUT /api/admin/users/:userId/groups
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "groupIds": ["everyone", "trusted-members", "music-lovers"]
+}
+```
+
+#### Get My Permissions (Non-Admin)
+
+```http
+GET /api/permissions/me
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "userId": "...",
+  "groups": ["everyone", "trusted-members"],
+  "permissions": {
+    "voice-channels": true,
+    "text-channels": true,
+    "youtube-bot": true,
+    "file-share": false
+  }
+}
+```
+
+#### Check Permission (Non-Admin)
+
+```http
+GET /api/permissions/check/:feature
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "feature": "spotify-bot",
+  "hasPermission": true
+}
+```
+
+---
+
+### File Sharing Endpoints
+
+#### Get File Share Status (Admin)
+
+```http
+GET /api/admin/file-share/status
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "enabled": true,
+  "totalSharedFolders": 15,
+  "usersSharing": 5,
+  "onlineUsers": 12
+}
+```
+
+#### Enable/Disable File Sharing (Admin)
+
+```http
+POST /api/admin/file-share/enable
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "enabled": true
+}
+```
+
+#### Get All Shared Folders
+
+```http
+GET /api/file-share/folders
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "folders": [
+    {
+      "folderId": "user123-1234567890",
+      "folderName": "Music",
+      "sharedAt": "2024-01-15T10:30:00Z",
+      "userId": "user123",
+      "username": "john"
+    }
+  ]
+}
+```
+
+#### Get My Shared Folders
+
+```http
+GET /api/file-share/my-folders
+Authorization: Bearer <token>
+```
+
+#### Share a Folder
+
+```http
+POST /api/file-share/folders
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "folderPath": "/home/user/shared",
+  "folderName": "My Shared Folder"
+}
+```
+
+#### Unshare a Folder
+
+```http
+DELETE /api/file-share/folders/:folderId
+Authorization: Bearer <token>
+```
+
+#### Get User's Shared Folders
+
+```http
+GET /api/file-share/users/:userId/folders
+Authorization: Bearer <token>
+```
+
+#### Get Folder Contents
+
+```http
+GET /api/file-share/users/:userId/folders/:folderId/contents?subPath=subfolder
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "contents": [
+    {
+      "name": "document.pdf",
+      "isDirectory": false,
+      "size": 1024000
+    },
+    {
+      "name": "images",
+      "isDirectory": true
+    }
+  ]
+}
+```
+
+#### Request File Download
+
+```http
+POST /api/file-share/users/:userId/folders/:folderId/download
+Authorization: Bearer <token>
+```
+
+Request:
+```json
+{
+  "filePath": "subfolder/document.pdf"
+}
+```
+
+---
+
+### Media Bot Endpoints
+
+#### YouTube Bot
+
+```http
+GET /api/admin/youtube-bot/status
+POST /api/admin/youtube-bot/enable
+POST /api/admin/youtube-bot/play
+POST /api/admin/youtube-bot/stop
+Authorization: Bearer <token>
+```
+
+#### Plex Bot
+
+```http
+GET /api/admin/plex-bot/status
+POST /api/admin/plex-bot/enable
+POST /api/admin/plex-bot/connect
+POST /api/admin/plex-bot/disconnect
+GET /api/admin/plex-bot/search?query=...
+POST /api/admin/plex-bot/play
+POST /api/admin/plex-bot/stop
+Authorization: Bearer <token>
+```
+
+#### Emby Bot
+
+```http
+GET /api/admin/emby-bot/status
+POST /api/admin/emby-bot/enable
+POST /api/admin/emby-bot/connect
+POST /api/admin/emby-bot/disconnect
+GET /api/admin/emby-bot/search?query=...
+POST /api/admin/emby-bot/play
+POST /api/admin/emby-bot/stop
+Authorization: Bearer <token>
+```
+
+#### Jellyfin Bot
+
+```http
+GET /api/admin/jellyfin-bot/status
+POST /api/admin/jellyfin-bot/enable
+POST /api/admin/jellyfin-bot/connect
+POST /api/admin/jellyfin-bot/disconnect
+GET /api/admin/jellyfin-bot/search?query=...
+POST /api/admin/jellyfin-bot/play
+POST /api/admin/jellyfin-bot/stop
+Authorization: Bearer <token>
+```
+
+#### Chrome Bot
+
+```http
+GET /api/admin/chrome-bot/status
+POST /api/admin/chrome-bot/enable
+POST /api/admin/chrome-bot/start
+GET /api/admin/chrome-bot/session/:channelId
+POST /api/admin/chrome-bot/navigate
+POST /api/admin/chrome-bot/back
+POST /api/admin/chrome-bot/forward
+POST /api/admin/chrome-bot/refresh
+POST /api/admin/chrome-bot/stop
+POST /api/admin/chrome-bot/join
+POST /api/admin/chrome-bot/transfer
+Authorization: Bearer <token>
+```
+
+#### IPTV Bot
+
+```http
+GET /api/admin/iptv-bot/status
+POST /api/admin/iptv-bot/enable
+POST /api/admin/iptv-bot/configure
+GET /api/admin/iptv-bot/channels?group=...
+GET /api/admin/iptv-bot/groups
+GET /api/admin/iptv-bot/epg/:channelId
+POST /api/admin/iptv-bot/play
+POST /api/admin/iptv-bot/change-channel
+POST /api/admin/iptv-bot/stop
+POST /api/admin/iptv-bot/recordings
+GET /api/admin/iptv-bot/recordings
+DELETE /api/admin/iptv-bot/recordings/:recordingId
+POST /api/admin/iptv-bot/recordings/:recordingId/tag
+Authorization: Bearer <token>
+```
+
+#### Spotify Bot
+
+```http
+GET /api/admin/spotify-bot/status
+POST /api/admin/spotify-bot/enable
+POST /api/admin/spotify-bot/configure
+GET /api/admin/spotify-bot/auth-url
+POST /api/admin/spotify-bot/callback
+POST /api/admin/spotify-bot/disconnect
+GET /api/admin/spotify-bot/search?query=...&type=track
+GET /api/admin/spotify-bot/playlists
+GET /api/admin/spotify-bot/playlists/:playlistId/tracks
+POST /api/admin/spotify-bot/play
+POST /api/admin/spotify-bot/queue
+POST /api/admin/spotify-bot/skip
+GET /api/admin/spotify-bot/queue/:channelId
+POST /api/admin/spotify-bot/stop
+Authorization: Bearer <token>
 ```
 
 ---
