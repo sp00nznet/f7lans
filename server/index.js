@@ -14,6 +14,8 @@ const apiRoutes = require('./routes/api');
 const { initializeSocket } = require('./socket/socketHandler');
 const User = require('./models/User');
 const Channel = require('./models/Channel');
+const FederationService = require('./services/federationService');
+const { getServerId } = require('./config/federation');
 
 const app = express();
 
@@ -47,11 +49,14 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api', apiRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const serverId = await getServerId();
   res.json({
     status: 'ok',
     name: 'F7Lans Server',
     version: '1.0.0',
+    serverId: serverId,
+    federationEnabled: true,
     timestamp: new Date().toISOString()
   });
 });
@@ -88,6 +93,9 @@ const io = new Server(server, {
 
 // Initialize socket handlers
 initializeSocket(io);
+
+// Initialize federation service
+const federationService = new FederationService(io);
 
 // Database and server startup
 const startServer = async () => {
@@ -133,6 +141,11 @@ const startServer = async () => {
       console.log('Default channels created');
     }
 
+    // Initialize federation service (reconnect to federated servers)
+    const serverId = await getServerId();
+    await federationService.initialize();
+    console.log(`Federation initialized. Server ID: ${serverId}`);
+
     // Start server
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`
@@ -142,6 +155,9 @@ const startServer = async () => {
 ║                                                           ║
 ║   Server running on port ${PORT}                            ║
 ║   ${ENABLE_HTTPS ? 'HTTPS' : 'HTTP'}: ${ENABLE_HTTPS ? 'https' : 'http'}://localhost:${PORT}                       ║
+║                                                           ║
+║   Federation: Enabled                                     ║
+║   Server ID: ${serverId.substring(0, 20)}...              ║
 ║                                                           ║
 ║   Default Admin: admin / admin123                         ║
 ║   (Change password after first login!)                    ║
@@ -158,12 +174,25 @@ const startServer = async () => {
 startServer();
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+
+  // Disconnect from federated servers
+  await federationService.shutdown();
+  console.log('Federation connections closed');
+
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
   });
 });
 
-module.exports = { app, server, io };
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await federationService.shutdown();
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+module.exports = { app, server, io, federationService };
