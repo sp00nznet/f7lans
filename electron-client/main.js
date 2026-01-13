@@ -300,6 +300,24 @@ function setupIPC() {
       throw error;
     }
   });
+
+  // Select folder for file sharing
+  ipcMain.handle('select-folder', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select a folder to share'
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    const folderPath = result.filePaths[0];
+    const folderName = path.basename(folderPath);
+
+    return { path: folderPath, name: folderName };
+  });
 }
 
 // Start embedded server

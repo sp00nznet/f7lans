@@ -235,6 +235,31 @@ const startServer = async () => {
       console.error('Spotify bot service failed to initialize:', err.message);
     }
 
+    // Initialize Group service
+    let groupService = null;
+    try {
+      const { GroupService } = require('./services/groupService');
+      const groupController = require('./controllers/groupController');
+      const accessControl = require('./middleware/accessControl');
+      groupService = new GroupService();
+      groupController.initialize(groupService);
+      accessControl.initialize(groupService);
+      console.log('Group service initialized');
+    } catch (err) {
+      console.error('Group service failed to initialize:', err.message);
+    }
+
+    // Initialize File Share service
+    try {
+      const { FileShareService } = require('./services/fileShareService');
+      const fileShareController = require('./controllers/fileShareController');
+      const fileShareService = new FileShareService(io);
+      fileShareController.initialize(fileShareService, groupService);
+      console.log('File share service initialized');
+    } catch (err) {
+      console.error('File share service failed to initialize:', err.message);
+    }
+
     // Start server
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`

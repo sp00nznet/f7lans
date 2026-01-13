@@ -341,6 +341,7 @@ function renderMainApp() {
         <div class="user-controls">
           <button class="user-btn" onclick="toggleMute()" title="Mute">🎤</button>
           <button class="user-btn" onclick="toggleDeafen()" title="Deafen">🎧</button>
+          <button class="user-btn" onclick="openFileShareModal()" title="Shared Files">📁</button>
           <button class="user-btn" onclick="openSettings()" title="Settings">⚙️</button>
         </div>
       </div>
@@ -1143,7 +1144,12 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
           <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
           <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+          <button class="btn-secondary" onclick="openGroupsModal()">Groups</button>
           <button class="btn-secondary" onclick="openFederationModal()">Federation</button>
+        </div>
+        <h4 style="margin-top: 16px; color: var(--text-muted);">Features</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn-secondary" onclick="openFileShareAdminModal()">File Sharing</button>
         </div>
         <h4 style="margin-top: 16px; color: var(--text-muted);">Media Bots</h4>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
@@ -3171,6 +3177,644 @@ async function stopSpotify(channelId) {
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
+}
+
+// ==================== Groups Management Modal ====================
+async function openGroupsModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Groups & Access Control</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="groupsContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+  await loadGroupsContent();
+}
+
+async function loadGroupsContent() {
+  try {
+    const [groupsRes, featuresRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/features`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupsData = await groupsRes.json();
+    const featuresData = await featuresRes.json();
+    if (!groupsRes.ok) throw new Error(groupsData.error);
+
+    const groups = groupsData.groups || [];
+    const features = featuresData.features || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>Create New Group</h3>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <input type="text" id="newGroupName" placeholder="Group name" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-primary" onclick="createGroup()">Create</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Groups (${groups.length})</h3>
+        <div id="groupsList" style="margin-top: 12px;">
+          ${groups.map(group => `
+            <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div>
+                  <div style="font-weight: 600; font-size: 14px;">${escapeHtml(group.name)}</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(group.description || 'No description')}</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-secondary" onclick="editGroupPermissions('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Permissions</button>
+                  <button class="btn-secondary" onclick="manageGroupMembers('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Members</button>
+                  ${!group.isDefault ? `<button class="btn-danger" onclick="deleteGroup('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Delete</button>` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    document.getElementById('groupsContent').innerHTML = `<p style="color: var(--danger);">Failed to load groups: ${error.message}</p>`;
+  }
+}
+
+async function createGroup() {
+  const name = document.getElementById('newGroupName').value.trim();
+  if (!name) { showToast('Enter group name', 'error'); return; }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ name })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Group created', 'success');
+    await loadGroupsContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function deleteGroup(groupId) {
+  if (!confirm('Are you sure you want to delete this group?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Group deleted', 'success');
+    await loadGroupsContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function editGroupPermissions(groupId) {
+  try {
+    const [groupRes, permsRes, featuresRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}/permissions`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/features`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupData = await groupRes.json();
+    const permsData = await permsRes.json();
+    const featuresData = await featuresRes.json();
+
+    if (!groupRes.ok) throw new Error(groupData.error);
+
+    const group = groupData.group;
+    const permissions = permsData.permissions || {};
+    const features = featuresData.features || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadGroupsContent()">← Back to Groups</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>Permissions for: ${escapeHtml(group.name)}</h3>
+        <div style="margin-top: 12px;">
+          ${features.map(feature => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+              <div>
+                <div style="font-weight: 500;">${escapeHtml(feature.name)}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(feature.description)}</div>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="perm-${feature.id}" ${permissions[feature.id] ? 'checked' : ''} onchange="updateGroupPermission('${groupId}', '${feature.id}', this.checked)">
+                <span style="font-size: 12px; color: var(--text-muted);">${permissions[feature.id] ? 'Allowed' : 'Denied'}</span>
+              </label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to load permissions: ' + error.message, 'error');
+  }
+}
+
+async function updateGroupPermission(groupId, featureId, allowed) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ permissions: { [featureId]: allowed } })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    // Update the label
+    const checkbox = document.getElementById(`perm-${featureId}`);
+    if (checkbox) {
+      const label = checkbox.parentElement.querySelector('span');
+      if (label) label.textContent = allowed ? 'Allowed' : 'Denied';
+    }
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function manageGroupMembers(groupId) {
+  try {
+    const [groupRes, membersRes, usersRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}/members`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/users`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupData = await groupRes.json();
+    const membersData = await membersRes.json();
+    const usersData = await usersRes.json();
+
+    if (!groupRes.ok) throw new Error(groupData.error);
+
+    const group = groupData.group;
+    const members = membersData.members || [];
+    const users = usersData.users || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadGroupsContent()">← Back to Groups</button>
+      </div>
+
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>Members of: ${escapeHtml(group.name)}</h3>
+        ${group.id === 'everyone' ? `
+          <p style="color: var(--text-muted); margin-top: 8px;">All users are automatically members of this group.</p>
+        ` : `
+          <div style="margin-top: 12px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+              <select id="addUserToGroup" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+                <option value="">Select user to add...</option>
+                ${users.filter(u => !members.includes(u._id)).map(u => `
+                  <option value="${u._id}">${escapeHtml(u.displayName || u.username)} (@${escapeHtml(u.username)})</option>
+                `).join('')}
+              </select>
+              <button class="btn-primary" onclick="addUserToGroup('${groupId}')">Add</button>
+            </div>
+
+            <div id="membersList">
+              ${members.length > 0 ? members.map(memberId => {
+                const user = users.find(u => u._id === memberId);
+                return user ? `
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-lighter); display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                        ${user.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style="font-weight: 500;">${escapeHtml(user.displayName || user.username)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">@${escapeHtml(user.username)}</div>
+                      </div>
+                    </div>
+                    <button class="btn-danger" onclick="removeUserFromGroup('${groupId}', '${memberId}')" style="padding: 4px 8px; font-size: 12px;">Remove</button>
+                  </div>
+                ` : '';
+              }).join('') : '<p style="color: var(--text-muted);">No members in this group yet.</p>'}
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to load members: ' + error.message, 'error');
+  }
+}
+
+async function addUserToGroup(groupId) {
+  const userId = document.getElementById('addUserToGroup').value;
+  if (!userId) { showToast('Select a user', 'error'); return; }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/users/${userId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('User added to group', 'success');
+    await manageGroupMembers(groupId);
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function removeUserFromGroup(groupId, userId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('User removed from group', 'success');
+    await manageGroupMembers(groupId);
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== File Share Admin Modal ====================
+async function openFileShareAdminModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>File Sharing</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="fileShareContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/file-share/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderFileShareContent(data);
+  } catch (error) {
+    document.getElementById('fileShareContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderFileShareContent(data) {
+  const { enabled, totalSharedFolders, usersSharing, onlineUsers } = data;
+
+  document.getElementById('fileShareContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+          ${enabled ? 'Enabled' : 'Disabled'}
+        </span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleFileShare(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+        When enabled, users with the "file-share" permission can share folders with other users.
+      </p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Statistics</h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px;">
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${totalSharedFolders}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Shared Folders</div>
+        </div>
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${usersSharing}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Users Sharing</div>
+        </div>
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${onlineUsers}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Online Users</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>How It Works</h3>
+      <div style="color: var(--text-muted); font-size: 13px; line-height: 1.6; margin-top: 12px;">
+        <p>1. Users mark local folders as "shared" from their client</p>
+        <p>2. Other users can browse and download files from shared folders</p>
+        <p>3. Files are transferred peer-to-peer when both users are online</p>
+        <p>4. Access is controlled by group permissions</p>
+      </div>
+    </div>
+    ` : `
+    <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+      <p>Enable file sharing to allow users to share folders with each other.</p>
+      <p style="font-size: 12px; margin-top: 8px;">Make sure to grant the "file-share" permission to appropriate groups.</p>
+    </div>
+    `}
+  `;
+}
+
+async function toggleFileShare(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/file-share/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    openFileShareAdminModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== User File Share Modal ====================
+async function openFileShareModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Shared Files</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="userFileShareContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+  await loadUserFileShareContent();
+}
+
+async function loadUserFileShareContent() {
+  try {
+    // Check permissions first
+    const permsRes = await fetch(`${state.serverUrl}/api/permissions/me`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const permsData = await permsRes.json();
+
+    if (!permsData.permissions?.['file-share']) {
+      document.getElementById('userFileShareContent').innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+          <p>File sharing is not available to you.</p>
+          <p style="font-size: 12px; margin-top: 8px;">Ask an admin to grant you access.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const [myFoldersRes, allFoldersRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/file-share/my-folders`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/file-share/folders`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const myFoldersData = await myFoldersRes.json();
+    const allFoldersData = await allFoldersRes.json();
+
+    if (!myFoldersRes.ok) throw new Error(myFoldersData.error);
+
+    const myFolders = myFoldersData.folders || [];
+    const allFolders = (allFoldersData.folders || []).filter(f => f.userId !== state.user._id);
+
+    document.getElementById('userFileShareContent').innerHTML = `
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>My Shared Folders (${myFolders.length})</h3>
+        <div style="margin-top: 12px;">
+          <button class="btn-primary" onclick="selectFolderToShare()" style="margin-bottom: 12px;">
+            + Share a Folder
+          </button>
+
+          <div id="mySharedFoldersList">
+            ${myFolders.length > 0 ? myFolders.map(folder => `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <span style="font-size: 20px;">📁</span>
+                  <div>
+                    <div style="font-weight: 500;">${escapeHtml(folder.folderName)}</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(folder.folderPath)}</div>
+                  </div>
+                </div>
+                <button class="btn-danger" onclick="unshareFolder('${folder.folderId}')" style="padding: 4px 8px; font-size: 12px;">Unshare</button>
+              </div>
+            `).join('') : '<p style="color: var(--text-muted);">You haven\'t shared any folders yet.</p>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Browse Shared Files</h3>
+        <div style="margin-top: 12px;">
+          ${allFolders.length > 0 ? `
+            <div id="sharedFoldersBrowser">
+              ${Object.entries(allFolders.reduce((acc, f) => {
+                if (!acc[f.username]) acc[f.username] = [];
+                acc[f.username].push(f);
+                return acc;
+              }, {})).map(([username, folders]) => `
+                <div style="margin-bottom: 12px;">
+                  <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
+                    ${escapeHtml(username)}'s Folders
+                  </div>
+                  ${folders.map(folder => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px; margin-left: 12px;">
+                      <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 20px;">📁</span>
+                        <div>
+                          <div style="font-weight: 500;">${escapeHtml(folder.folderName)}</div>
+                          <div style="font-size: 11px; color: var(--text-muted);">Shared ${new Date(folder.sharedAt).toLocaleDateString()}</div>
+                        </div>
+                      </div>
+                      <button class="btn-secondary" onclick="browseSharedFolder('${folder.userId}', '${folder.folderId}', '${escapeHtml(folder.folderName)}')" style="padding: 4px 8px; font-size: 12px;">Browse</button>
+                    </div>
+                  `).join('')}
+                </div>
+              `).join('')}
+            </div>
+          ` : '<p style="color: var(--text-muted);">No shared folders from other users.</p>'}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    document.getElementById('userFileShareContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load: ${error.message}</p>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">File sharing may be disabled by an admin.</p>
+    `;
+  }
+}
+
+async function selectFolderToShare() {
+  if (window.electronAPI && window.electronAPI.selectFolder) {
+    try {
+      const result = await window.electronAPI.selectFolder();
+      if (result && result.path) {
+        await shareSelectedFolder(result.path, result.name || result.path.split(/[/\\]/).pop());
+      }
+    } catch (error) {
+      showToast('Failed to select folder: ' + error.message, 'error');
+    }
+  } else {
+    // Fallback for web: prompt for path
+    const folderPath = prompt('Enter the full path to the folder you want to share:');
+    if (folderPath) {
+      const folderName = prompt('Enter a name for this shared folder:', folderPath.split(/[/\\]/).pop());
+      if (folderName) {
+        await shareSelectedFolder(folderPath, folderName);
+      }
+    }
+  }
+}
+
+async function shareSelectedFolder(folderPath, folderName) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/folders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ folderPath, folderName })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Folder shared!', 'success');
+    await loadUserFileShareContent();
+  } catch (error) {
+    showToast('Failed to share folder: ' + error.message, 'error');
+  }
+}
+
+async function unshareFolder(folderId) {
+  if (!confirm('Stop sharing this folder?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/folders/${folderId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Folder unshared', 'success');
+    await loadUserFileShareContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function browseSharedFolder(userId, folderId, folderName, subPath = '') {
+  try {
+    const response = await fetch(
+      `${state.serverUrl}/api/file-share/users/${userId}/folders/${folderId}/contents?subPath=${encodeURIComponent(subPath)}`,
+      { headers: { 'Authorization': `Bearer ${state.token}` } }
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 500 && data.error?.includes('offline')) {
+        showToast('User is offline. Files are only available when the owner is online.', 'error');
+      } else {
+        throw new Error(data.error);
+      }
+      return;
+    }
+
+    const contents = data.contents || [];
+    const pathParts = subPath ? subPath.split('/').filter(p => p) : [];
+
+    document.getElementById('userFileShareContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadUserFileShareContent()">← Back to All Folders</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>📁 ${escapeHtml(folderName)}${subPath ? ' / ' + pathParts.join(' / ') : ''}</h3>
+
+        ${subPath ? `
+          <button class="btn-secondary" onclick="browseSharedFolder('${userId}', '${folderId}', '${escapeHtml(folderName)}', '${pathParts.slice(0, -1).join('/')}')" style="margin-top: 8px; margin-bottom: 12px;">
+            ↑ Go Up
+          </button>
+        ` : ''}
+
+        <div style="margin-top: 12px;">
+          ${contents.length > 0 ? contents.map(item => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: ${item.isDirectory ? 'pointer' : 'default'};" ${item.isDirectory ? `onclick="browseSharedFolder('${userId}', '${folderId}', '${escapeHtml(folderName)}', '${subPath ? subPath + '/' : ''}${item.name}')"` : ''}>
+                <span style="font-size: 20px;">${item.isDirectory ? '📁' : '📄'}</span>
+                <div>
+                  <div style="font-weight: 500;">${escapeHtml(item.name)}</div>
+                  ${!item.isDirectory ? `<div style="font-size: 11px; color: var(--text-muted);">${formatFileSize(item.size)}</div>` : ''}
+                </div>
+              </div>
+              ${!item.isDirectory ? `
+                <button class="btn-primary" onclick="requestFileDownload('${userId}', '${folderId}', '${subPath ? subPath + '/' : ''}${item.name}')" style="padding: 4px 8px; font-size: 12px;">Download</button>
+              ` : ''}
+            </div>
+          `).join('') : '<p style="color: var(--text-muted);">This folder is empty.</p>'}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to browse: ' + error.message, 'error');
+  }
+}
+
+async function requestFileDownload(userId, folderId, filePath) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/users/${userId}/folders/${folderId}/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ filePath })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    showToast('Download requested. File transfer will start when owner responds.', 'info');
+    // In a full implementation, this would trigger P2P file transfer
+    // For now, we just show that the request was made
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) {
+    bytes /= 1024;
+    i++;
+  }
+  return bytes.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 }
 
 function getRoleColor(role) {

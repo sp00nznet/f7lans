@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const { authenticate, adminOnly } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/accessControl');
 const authController = require('../controllers/authController');
 const adminController = require('../controllers/adminController');
 const channelController = require('../controllers/channelController');
@@ -14,6 +15,8 @@ const jellyfinBotController = require('../controllers/jellyfinBotController');
 const chromeBotController = require('../controllers/chromeBotController');
 const iptvBotController = require('../controllers/iptvBotController');
 const spotifyBotController = require('../controllers/spotifyBotController');
+const groupController = require('../controllers/groupController');
+const fileShareController = require('../controllers/fileShareController');
 
 const router = express.Router();
 
@@ -193,6 +196,38 @@ router.post('/admin/spotify-bot/stop', authenticate, spotifyBotController.stop);
 
 // ===== Channel Moderation Routes =====
 router.post('/channels/:channelId/kick/:userId', authenticate, adminOnly, channelController.kickUser);
+
+// ===== Group Management Routes =====
+router.get('/admin/groups', authenticate, adminOnly, groupController.getAllGroups);
+router.post('/admin/groups', authenticate, adminOnly, groupController.createGroup);
+router.get('/admin/groups/features', authenticate, adminOnly, groupController.getAvailableFeatures);
+router.get('/admin/groups/:groupId', authenticate, adminOnly, groupController.getGroup);
+router.put('/admin/groups/:groupId', authenticate, adminOnly, groupController.updateGroup);
+router.delete('/admin/groups/:groupId', authenticate, adminOnly, groupController.deleteGroup);
+router.get('/admin/groups/:groupId/members', authenticate, adminOnly, groupController.getGroupMembers);
+router.get('/admin/groups/:groupId/permissions', authenticate, adminOnly, groupController.getGroupPermissions);
+router.put('/admin/groups/:groupId/permissions', authenticate, adminOnly, groupController.setGroupPermissions);
+router.post('/admin/groups/:groupId/users/:userId', authenticate, adminOnly, groupController.addUserToGroup);
+router.delete('/admin/groups/:groupId/users/:userId', authenticate, adminOnly, groupController.removeUserFromGroup);
+router.get('/admin/users/:userId/groups', authenticate, adminOnly, groupController.getUserGroups);
+router.put('/admin/users/:userId/groups', authenticate, adminOnly, groupController.setUserGroups);
+
+// User permission endpoints (non-admin)
+router.get('/permissions/me', authenticate, groupController.getMyPermissions);
+router.get('/permissions/check/:feature', authenticate, groupController.checkPermission);
+
+// ===== File Share Routes =====
+router.get('/admin/file-share/status', authenticate, adminOnly, fileShareController.getStatus);
+router.post('/admin/file-share/enable', authenticate, adminOnly, fileShareController.setEnabled);
+
+// User file share endpoints
+router.get('/file-share/folders', authenticate, requirePermission('file-share'), fileShareController.getAllSharedFolders);
+router.get('/file-share/my-folders', authenticate, requirePermission('file-share'), fileShareController.getMySharedFolders);
+router.post('/file-share/folders', authenticate, requirePermission('file-share'), fileShareController.shareFolder);
+router.delete('/file-share/folders/:folderId', authenticate, requirePermission('file-share'), fileShareController.unshareFolder);
+router.get('/file-share/users/:userId/folders', authenticate, requirePermission('file-share'), fileShareController.getUserSharedFolders);
+router.get('/file-share/users/:userId/folders/:folderId/contents', authenticate, requirePermission('file-share'), fileShareController.getFolderContents);
+router.post('/file-share/users/:userId/folders/:folderId/download', authenticate, requirePermission('file-share'), fileShareController.requestDownload);
 
 // Health check
 router.get('/health', (req, res) => {

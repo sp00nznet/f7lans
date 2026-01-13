@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Screen sharing - get available sources via main process
   getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
 
+  // File sharing - folder selection
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+
   // Platform info
   platform: process.platform,
   version: process.versions.electron
