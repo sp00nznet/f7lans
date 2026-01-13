@@ -934,6 +934,17 @@ function openSettings() {
           <input type="text" value="${state.user?.steamId || ''}" id="steamId" style="width: 150px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
         </div>
       </div>
+
+      ${state.user?.role === 'admin' || state.user?.role === 'superadmin' ? `
+      <div class="settings-section">
+        <h3>Administration</h3>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
+          <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
+          <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+        </div>
+      </div>
+      ` : ''}
     </div>
     <div class="modal-footer">
       <button class="btn-danger" onclick="disconnect()">Disconnect</button>
@@ -1009,6 +1020,231 @@ function capturePTTKey() {
   };
 
   document.addEventListener('keydown', handler);
+}
+
+// ===== Admin Panel Functions =====
+function openInviteModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Create Invite</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+        <label>Email (optional)</label>
+        <input type="email" id="inviteEmail" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <small style="color: var(--text-muted);">Leave blank to generate a link without sending email</small>
+      </div>
+      <div class="settings-row" style="margin-top: 16px;">
+        <label>Max Uses</label>
+        <input type="number" id="inviteMaxUses" value="1" min="1" max="100" style="width: 80px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div id="inviteResult" style="display: none; margin-top: 16px; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+        <label style="font-size: 12px; color: var(--text-muted);">Invite Code:</label>
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <input type="text" id="inviteCode" readonly style="flex: 1; padding: 8px; background: var(--bg-medium); border: 1px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--accent-primary); font-family: monospace;">
+          <button class="btn-secondary" onclick="copyInviteCode()">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+      <button class="btn-primary" onclick="createInvite()">Generate Invite</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function createInvite() {
+  const email = document.getElementById('inviteEmail').value;
+  const maxUses = parseInt(document.getElementById('inviteMaxUses').value) || 1;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/invites`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ email: email || null, maxUses })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    document.getElementById('inviteCode').value = result.invite?.code || result.code;
+    document.getElementById('inviteResult').style.display = 'block';
+    showToast('Invite created!', 'success');
+  } catch (error) {
+    showToast('Failed to create invite: ' + error.message, 'error');
+  }
+}
+
+function copyInviteCode() {
+  const code = document.getElementById('inviteCode');
+  code.select();
+  document.execCommand('copy');
+  showToast('Invite code copied!', 'success');
+}
+
+function openCreateUserModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Create User</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+        <label>Username</label>
+        <input type="text" id="newUsername" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px;">
+        <label>Email</label>
+        <input type="email" id="newEmail" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px;">
+        <label>Password</label>
+        <input type="password" id="newPassword" required style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="settings-row" style="margin-top: 12px;">
+        <label>Role</label>
+        <select id="newRole" style="padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <option value="user">User</option>
+          <option value="moderator">Moderator</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="createUser()">Create User</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function createUser() {
+  const username = document.getElementById('newUsername').value;
+  const email = document.getElementById('newEmail').value;
+  const password = document.getElementById('newPassword').value;
+  const role = document.getElementById('newRole').value;
+
+  if (!username || !email || !password) {
+    showToast('Please fill in all fields', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ username, email, password, role })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('User created successfully!', 'success');
+    closeModal();
+  } catch (error) {
+    showToast('Failed to create user: ' + error.message, 'error');
+  }
+}
+
+async function openAdminPanel() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>User Management</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+      <div id="adminUserList">Loading users...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  // Load users
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/users`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    const users = data.users || [];
+
+    const userListHtml = users.map(user => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: ${getRoleColor(user.role)}; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+          ${user.username.charAt(0).toUpperCase()}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 500;">${escapeHtml(user.displayName || user.username)}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">@${escapeHtml(user.username)} • ${user.role}</div>
+        </div>
+        ${user._id !== state.user._id ? `
+          <select onchange="updateUserRole('${user._id}', this.value)" style="padding: 6px; background: var(--bg-medium); border: 1px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
+            <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
+            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        ` : '<span style="color: var(--text-muted); font-size: 12px;">You</span>'}
+      </div>
+    `).join('');
+
+    document.getElementById('adminUserList').innerHTML = userListHtml || '<p style="color: var(--text-muted);">No users found</p>';
+  } catch (error) {
+    document.getElementById('adminUserList').innerHTML = `<p style="color: var(--danger);">Failed to load users: ${error.message}</p>`;
+  }
+}
+
+async function updateUserRole(userId, role) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ role })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('User role updated', 'success');
+  } catch (error) {
+    showToast('Failed to update role: ' + error.message, 'error');
+    openAdminPanel(); // Refresh the list
+  }
+}
+
+function getRoleColor(role) {
+  switch (role) {
+    case 'superadmin': return 'var(--accent-primary)';
+    case 'admin': return '#ff6b6b';
+    case 'moderator': return '#6bff6b';
+    default: return 'var(--bg-lighter)';
+  }
 }
 
 function closeModal() {
