@@ -763,11 +763,16 @@ function openScreenPickerModal(sources) {
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
-  const sourcesHtml = sources.map(source => `
+  // Store sources globally so we can access thumbnails by index
+  window._screenSources = sources;
+
+  const sourcesHtml = sources.map((source, index) => `
     <div class="screen-source" onclick="selectScreenSource('${source.id}')"
          style="cursor: pointer; padding: 8px; border-radius: 8px; background: var(--bg-dark); text-align: center; transition: all 0.2s;">
-      <img src="${source.thumbnail}" alt="${escapeHtml(source.name)}"
-           style="width: 100%; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent;">
+      <div class="screen-thumbnail" data-index="${index}"
+           style="width: 100%; height: 120px; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent; background: var(--bg-medium); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+        <span style="color: var(--text-muted); font-size: 32px;">🖥️</span>
+      </div>
       <div style="font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
         ${escapeHtml(source.name)}
       </div>
@@ -792,10 +797,31 @@ function openScreenPickerModal(sources) {
 
   // Add hover effect
   const style = document.createElement('style');
-  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover img { border-color: var(--accent-primary) !important; }`;
+  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover .screen-thumbnail { border-color: var(--accent-primary) !important; }`;
   modal.appendChild(style);
 
   overlay.classList.add('active');
+
+  // Load thumbnails after modal is shown
+  setTimeout(() => {
+    document.querySelectorAll('.screen-thumbnail').forEach((el) => {
+      const index = parseInt(el.dataset.index);
+      const source = window._screenSources[index];
+      if (source && source.thumbnail) {
+        const img = document.createElement('img');
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.onload = () => {
+          el.innerHTML = '';
+          el.appendChild(img);
+        };
+        img.onerror = () => {
+          // Keep the fallback icon on error
+          console.log('Failed to load thumbnail for:', source.name);
+        };
+        img.src = source.thumbnail;
+      }
+    });
+  }, 50);
 }
 
 // Select a screen source from the picker
