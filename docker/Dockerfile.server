@@ -8,10 +8,15 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
+COPY package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (use npm install if no lock file, ci if lock file exists)
+RUN if [ -f package-lock.json ]; then \
+      npm ci --omit=dev; \
+    else \
+      npm install --omit=dev; \
+    fi
 
 # Copy server code
 COPY server/ ./server/
