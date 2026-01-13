@@ -9,8 +9,9 @@ const store = new Store({
     token: null,
     minimizeToTray: true,
     startMinimized: false,
-    pushToTalkKey: 'Space',
-    voiceActivated: false,
+    pushToTalkKey: '',  // Empty = PTT disabled. Use voice activation instead
+    pushToTalkEnabled: false,
+    voiceActivated: true,  // Voice activation enabled by default
     voiceActivationThreshold: 50,
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
@@ -169,33 +170,24 @@ function createTray() {
 
 // Register global shortcuts
 function registerShortcuts() {
-  // Push to talk
-  const pttKey = store.get('pushToTalkKey');
-
+  // Mute toggle: Ctrl+Shift+M
   globalShortcut.register(`CommandOrControl+Shift+M`, () => {
     if (mainWindow) {
       mainWindow.webContents.send('toggle-mute');
     }
   });
 
+  // Deafen toggle: Ctrl+Shift+D
   globalShortcut.register(`CommandOrControl+Shift+D`, () => {
     if (mainWindow) {
       mainWindow.webContents.send('toggle-deafen');
     }
   });
 
-  // Push to talk (hold to talk)
-  if (pttKey && !store.get('voiceActivated')) {
-    try {
-      globalShortcut.register(pttKey, () => {
-        if (mainWindow) {
-          mainWindow.webContents.send('ptt-start');
-        }
-      });
-    } catch (e) {
-      console.error('Failed to register PTT key:', e);
-    }
-  }
+  // NOTE: Push-to-talk is NOT registered globally because Electron's
+  // globalShortcut doesn't support key release events (only keydown).
+  // PTT is handled within the renderer window using regular keyboard events.
+  // Users should use voice activation for hands-free, or PTT within the app window.
 }
 
 // Show notification

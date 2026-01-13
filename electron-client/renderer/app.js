@@ -42,6 +42,54 @@ async function init() {
 
   // Set up form handler
   document.getElementById('connectionForm').addEventListener('submit', handleConnect);
+
+  // Set up in-window PTT keyboard handling
+  // PTT only works when window is focused (safer than global hotkeys)
+  setupPTTKeyboard();
+}
+
+// Set up push-to-talk keyboard handling within the window
+function setupPTTKeyboard() {
+  let pttKeyDown = false;
+
+  document.addEventListener('keydown', (e) => {
+    // Skip if typing in an input/textarea
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // Check if PTT is enabled and this is the PTT key
+    const pttKey = state.settings?.pushToTalkKey;
+    if (!pttKey || state.settings?.voiceActivated) return;
+
+    // Map key names
+    const pressedKey = e.code; // e.g., 'Space', 'KeyV', 'F1'
+
+    if (pressedKey === pttKey && !pttKeyDown && state.inVoice) {
+      pttKeyDown = true;
+      e.preventDefault();
+      state.isPTTActive = true;
+      if (state.localStream) {
+        state.localStream.getAudioTracks().forEach(t => t.enabled = true);
+      }
+      showPTTIndicator(true);
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    const pttKey = state.settings?.pushToTalkKey;
+    if (!pttKey || state.settings?.voiceActivated) return;
+
+    const pressedKey = e.code;
+
+    if (pressedKey === pttKey && pttKeyDown) {
+      pttKeyDown = false;
+      e.preventDefault();
+      state.isPTTActive = false;
+      if (state.localStream && state.isMuted) {
+        state.localStream.getAudioTracks().forEach(t => t.enabled = false);
+      }
+      showPTTIndicator(false);
+    }
+  });
 }
 
 // Set up IPC listeners from main process
@@ -853,9 +901,13 @@ function openSettings() {
             <option value="vad" ${state.settings.voiceActivated ? 'selected' : ''}>Voice Activated</option>
           </select>
         </div>
-        <div class="settings-row">
+        <div class="settings-row" id="pttKeyRow" style="display: ${!state.settings.voiceActivated ? 'flex' : 'none'};">
           <label>Push to Talk Key</label>
-          <input type="text" value="${state.settings.pushToTalkKey || 'Space'}" id="pttKey" style="width: 100px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button id="pttKeyBtn" onclick="capturePTTKey()" style="padding: 8px 16px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">
+            ${state.settings.pushToTalkKey || 'Click to set key'}
+          </button>
+          <input type="hidden" value="${state.settings.pushToTalkKey || ''}" id="pttKey">
+          <small style="color: var(--text-muted); font-size: 11px; margin-left: 8px;">(Works when app is focused)</small>
         </div>
       </div>
 
@@ -932,6 +984,31 @@ async function saveSettings() {
   closeModal();
   showToast('Settings saved', 'success');
   renderMainApp();
+}
+
+// Capture a key for PTT
+function capturePTTKey() {
+  const btn = document.getElementById('pttKeyBtn');
+  const input = document.getElementById('pttKey');
+  if (!btn) return;
+
+  btn.textContent = 'Press any key...';
+  btn.style.borderColor = 'var(--accent-primary)';
+
+  const handler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Use the key code (e.g., 'Space', 'KeyV', 'F1')
+    const keyCode = e.code;
+    btn.textContent = keyCode;
+    btn.style.borderColor = 'var(--bg-light)';
+    input.value = keyCode;
+
+    document.removeEventListener('keydown', handler);
+  };
+
+  document.addEventListener('keydown', handler);
 }
 
 function closeModal() {

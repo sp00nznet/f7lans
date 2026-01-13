@@ -53,7 +53,7 @@ const updateUserRole = async (req, res) => {
     const { userId } = req.params;
     const { role } = req.body;
 
-    if (!['user', 'admin'].includes(role)) {
+    if (!['user', 'moderator', 'admin'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -110,23 +110,72 @@ const toggleUserBan = async (req, res) => {
   }
 };
 
+// Create user directly (admin)
+const createUser = async (req, res) => {
+  try {
+    const { username, email, password, role, displayName } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, email, and password are required' });
+    }
+
+    // Check if username or email exists
+    const existingUser = await User.findOne({
+      $or: [
+        { username: username.toLowerCase() },
+        { email: email.toLowerCase() }
+      ]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username or email already exists' });
+    }
+
+    // Validate role
+    const allowedRoles = ['user', 'moderator', 'admin'];
+    const userRole = allowedRoles.includes(role) ? role : 'user';
+
+    // Only superadmin can create admins
+    if (userRole === 'admin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Only superadmin can create admin users' });
+    }
+
+    const user = new User({
+      username: username.toLowerCase(),
+      email: email.toLowerCase(),
+      password,
+      displayName: displayName || username,
+      role: userRole
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      message: 'User created successfully',
+      user: user.toPublicProfile()
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+};
+
 // Create invite (admin)
 const createInvite = async (req, res) => {
   try {
     const { email, maxUses, expiresInDays } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+    // Email is optional - if not provided, generate a generic invite
+    if (email) {
+      // Check if user already exists
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser) {
+        return res.status(400).json({ error: 'User with this email already exists' });
+      }
     }
 
     const invite = new Invite({
-      email: email.toLowerCase(),
+      email: email ? email.toLowerCase() : null,
       createdBy: req.user._id,
       maxUses: maxUses || 1,
       expiresAt: new Date(Date.now() + (expiresInDays || 7) * 24 * 60 * 60 * 1000)
@@ -243,6 +292,7 @@ const getStats = async (req, res) => {
 
 module.exports = {
   getAllUsers,
+  createUser,
   updateUserRole,
   toggleUserBan,
   createInvite,
