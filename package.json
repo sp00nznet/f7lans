@@ -7,13 +7,37 @@
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
     "client": "cd client && npm start",
+
     "electron": "cd electron-client && npm start",
-    "electron:build": "cd electron-client && npm run build",
+    "electron:embedded": "cd electron-client && npm run start:embedded",
+    "electron:headless": "cd electron-client && npm run start:headless",
+
+    "build:electron": "cd electron-client && npm run build",
+    "build:electron:win": "cd electron-client && npm run build:win",
+    "build:electron:mac": "cd electron-client && npm run build:mac",
+    "build:electron:linux": "cd electron-client && npm run build:linux",
+
+    "build:win:unified": "cd electron-client && npm run build:win:unified",
+    "build:win:headless": "cd electron-client && npm run build:win:headless",
+    "build:mac:unified": "cd electron-client && npm run build:mac:unified",
+    "build:linux:unified": "cd electron-client && npm run build:linux:unified",
+    "build:linux:headless": "cd electron-client && npm run build:linux:headless",
+
+    "mobile:setup": "cd mobile && npm install",
+    "mobile:init": "cd mobile && npm run cap:init && npm run cap:add:ios && npm run cap:add:android",
+    "build:ios": "cd mobile && npm run build:ios",
+    "build:android": "cd mobile && npm run build:android",
+    "run:ios": "cd mobile && npm run run:ios",
+    "run:android": "cd mobile && npm run run:android",
+
     "docker:build": "docker-compose build",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+
+    "install:all": "npm install && cd electron-client && npm install && cd ../mobile && npm install"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.14.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

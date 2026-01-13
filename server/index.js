@@ -94,6 +94,12 @@ initializeSocket(io);
 // Federation service (optional)
 let federationService = null;
 
+// YouTube bot service
+let youtubeBotService = null;
+
+// Plex bot service
+let plexBotService = null;
+
 // Database and server startup
 const startServer = async () => {
   try {
@@ -150,6 +156,108 @@ const startServer = async () => {
         console.error('Federation failed to initialize:', err.message);
         federationStatus = 'Failed';
       }
+    }
+
+    // Initialize YouTube bot service
+    try {
+      const { YouTubeBotService } = require('./services/youtubeBotService');
+      const youtubeBotController = require('./controllers/youtubeBotController');
+      youtubeBotService = new YouTubeBotService(io);
+      youtubeBotController.initialize(youtubeBotService);
+      console.log('YouTube bot service initialized');
+    } catch (err) {
+      console.error('YouTube bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Plex bot service
+    try {
+      const { PlexBotService } = require('./services/plexBotService');
+      const plexBotController = require('./controllers/plexBotController');
+      plexBotService = new PlexBotService(io);
+      plexBotController.initialize(plexBotService);
+      console.log('Plex bot service initialized');
+    } catch (err) {
+      console.error('Plex bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Emby bot service
+    try {
+      const { EmbyBotService } = require('./services/embyBotService');
+      const embyBotController = require('./controllers/embyBotController');
+      const embyBotService = new EmbyBotService(io);
+      embyBotController.initialize(embyBotService);
+      console.log('Emby bot service initialized');
+    } catch (err) {
+      console.error('Emby bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Jellyfin bot service
+    try {
+      const { JellyfinBotService } = require('./services/jellyfinBotService');
+      const jellyfinBotController = require('./controllers/jellyfinBotController');
+      const jellyfinBotService = new JellyfinBotService(io);
+      jellyfinBotController.initialize(jellyfinBotService);
+      console.log('Jellyfin bot service initialized');
+    } catch (err) {
+      console.error('Jellyfin bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Chrome bot service
+    try {
+      const { ChromeBotService } = require('./services/chromeBotService');
+      const chromeBotController = require('./controllers/chromeBotController');
+      const chromeBotService = new ChromeBotService(io);
+      chromeBotController.initialize(chromeBotService);
+      console.log('Chrome bot service initialized');
+    } catch (err) {
+      console.error('Chrome bot service failed to initialize:', err.message);
+    }
+
+    // Initialize IPTV bot service
+    try {
+      const { IPTVBotService } = require('./services/iptvBotService');
+      const iptvBotController = require('./controllers/iptvBotController');
+      const iptvBotService = new IPTVBotService(io);
+      iptvBotController.initialize(iptvBotService);
+      console.log('IPTV bot service initialized');
+    } catch (err) {
+      console.error('IPTV bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Spotify bot service
+    try {
+      const { SpotifyBotService } = require('./services/spotifyBotService');
+      const spotifyBotController = require('./controllers/spotifyBotController');
+      const spotifyBotService = new SpotifyBotService(io);
+      spotifyBotController.initialize(spotifyBotService);
+      console.log('Spotify bot service initialized');
+    } catch (err) {
+      console.error('Spotify bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Group service
+    let groupService = null;
+    try {
+      const { GroupService } = require('./services/groupService');
+      const groupController = require('./controllers/groupController');
+      const accessControl = require('./middleware/accessControl');
+      groupService = new GroupService();
+      groupController.initialize(groupService);
+      accessControl.initialize(groupService);
+      console.log('Group service initialized');
+    } catch (err) {
+      console.error('Group service failed to initialize:', err.message);
+    }
+
+    // Initialize File Share service
+    try {
+      const { FileShareService } = require('./services/fileShareService');
+      const fileShareController = require('./controllers/fileShareController');
+      const fileShareService = new FileShareService(io);
+      fileShareController.initialize(fileShareService, groupService);
+      console.log('File share service initialized');
+    } catch (err) {
+      console.error('File share service failed to initialize:', err.message);
     }
 
     // Start server

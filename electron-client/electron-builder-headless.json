@@ -1,0 +1,45 @@
+{
+  "appId": "com.f7lans.server",
+  "productName": "F7Lans Server",
+  "directories": {
+    "output": "dist/headless"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "package.json",
+    "assets/**"
+  ],
+  "extraResources": [
+    {
+      "from": "server",
+      "to": "server",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.ico"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "icon": "assets/icon.png",
+    "category": "Network"
+  },
+  "nsis": {
+    "oneClick": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "F7Lans Server",
+    "runAfterFinish": true
+  },
+  "env": {
+    "F7LANS_EMBEDDED_SERVER": "true",
+    "F7LANS_HEADLESS": "true"
+  }
+}

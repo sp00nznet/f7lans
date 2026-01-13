@@ -19,7 +19,7 @@ const state = {
   isPTTActive: false,
   localStream: null,
   cameraStream: null,
-  screenStream: null,
+  screenStreams: {}, // Multiple screen shares: { shareId: stream }
   settings: {},
   devices: {
     audioInputs: [],
@@ -341,6 +341,7 @@ function renderMainApp() {
         <div class="user-controls">
           <button class="user-btn" onclick="toggleMute()" title="Mute">🎤</button>
           <button class="user-btn" onclick="toggleDeafen()" title="Deafen">🎧</button>
+          <button class="user-btn" onclick="openFileShareModal()" title="Shared Files">📁</button>
           <button class="user-btn" onclick="openSettings()" title="Settings">⚙️</button>
         </div>
       </div>
@@ -728,33 +729,30 @@ async function toggleCamera() {
 }
 
 async function toggleScreenShare() {
-  if (!state.isScreenSharing) {
-    // In Electron, use desktopCapturer API via preload
-    if (window.electronAPI && window.electronAPI.getScreenSources) {
-      try {
-        const sources = await window.electronAPI.getScreenSources();
-        openScreenPickerModal(sources);
-      } catch (error) {
-        console.error('Failed to get screen sources:', error);
-        showToast('Could not get screen sources: ' + error.message, 'error');
-      }
-    } else {
-      // Fallback for web (browser) - use getDisplayMedia
-      try {
-        state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 1920, height: 1080, frameRate: 30 },
-          audio: true
-        });
-        startScreenShare(state.screenStream);
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('Screen share error:', error);
-          showToast('Could not share screen: ' + error.message, 'error');
-        }
-      }
+  // Always allow adding more screen shares - show picker
+  if (window.electronAPI && window.electronAPI.getScreenSources) {
+    try {
+      const sources = await window.electronAPI.getScreenSources();
+      openScreenPickerModal(sources);
+    } catch (error) {
+      console.error('Failed to get screen sources:', error);
+      showToast('Could not get screen sources: ' + error.message, 'error');
     }
   } else {
-    stopScreenShare();
+    // Fallback for web (browser) - use getDisplayMedia
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 1920, height: 1080, frameRate: 30 },
+        audio: true
+      });
+      const shareId = 'screen-' + Date.now();
+      startScreenShare(stream, shareId);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Screen share error:', error);
+        showToast('Could not share screen: ' + error.message, 'error');
+      }
+    }
   }
 }
 
@@ -763,11 +761,16 @@ function openScreenPickerModal(sources) {
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
-  const sourcesHtml = sources.map(source => `
+  // Store sources globally so we can access thumbnails by index
+  window._screenSources = sources;
+
+  const sourcesHtml = sources.map((source, index) => `
     <div class="screen-source" onclick="selectScreenSource('${source.id}')"
          style="cursor: pointer; padding: 8px; border-radius: 8px; background: var(--bg-dark); text-align: center; transition: all 0.2s;">
-      <img src="${source.thumbnail}" alt="${escapeHtml(source.name)}"
-           style="width: 100%; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent;">
+      <div class="screen-thumbnail" data-index="${index}"
+           style="width: 100%; height: 120px; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent; background: var(--bg-medium); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+        <span style="color: var(--text-muted); font-size: 32px;">🖥️</span>
+      </div>
       <div style="font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
         ${escapeHtml(source.name)}
       </div>
@@ -792,10 +795,31 @@ function openScreenPickerModal(sources) {
 
   // Add hover effect
   const style = document.createElement('style');
-  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover img { border-color: var(--accent-primary) !important; }`;
+  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover .screen-thumbnail { border-color: var(--accent-primary) !important; }`;
   modal.appendChild(style);
 
   overlay.classList.add('active');
+
+  // Load thumbnails after modal is shown
+  setTimeout(() => {
+    document.querySelectorAll('.screen-thumbnail').forEach((el) => {
+      const index = parseInt(el.dataset.index);
+      const source = window._screenSources[index];
+      if (source && source.thumbnail) {
+        const img = document.createElement('img');
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.onload = () => {
+          el.innerHTML = '';
+          el.appendChild(img);
+        };
+        img.onerror = () => {
+          // Keep the fallback icon on error
+          console.log('Failed to load thumbnail for:', source.name);
+        };
+        img.src = source.thumbnail;
+      }
+    });
+  }, 50);
 }
 
 // Select a screen source from the picker
@@ -804,7 +828,7 @@ async function selectScreenSource(sourceId) {
 
   try {
     // Use the selected source with getUserMedia (Electron way)
-    state.screenStream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         mandatory: {
@@ -817,7 +841,14 @@ async function selectScreenSource(sourceId) {
       }
     });
 
-    startScreenShare(state.screenStream);
+    // Generate unique share ID
+    const shareId = 'screen-' + Date.now();
+
+    // Find the source name for the label
+    const source = window._screenSources?.find(s => s.id === sourceId);
+    const label = source?.name || 'Screen Share';
+
+    startScreenShare(stream, shareId, label);
   } catch (error) {
     console.error('Failed to start screen share:', error);
     showToast('Could not share screen: ' + error.message, 'error');
@@ -825,45 +856,56 @@ async function selectScreenSource(sourceId) {
 }
 
 // Start screen sharing with a stream
-function startScreenShare(stream) {
-  state.screenStream = stream;
-  state.isScreenSharing = true;
+function startScreenShare(stream, shareId, label = 'Your Screen') {
+  state.screenStreams[shareId] = stream;
+  state.isScreenSharing = Object.keys(state.screenStreams).length > 0;
 
   if (state.socket) {
-    state.socket.emit('screen:start');
+    state.socket.emit('screen:start', { shareId, label });
   }
 
-  // Add screen share to grid
-  addVideoToGrid('local-screen', stream, 'Your Screen', false);
+  // Add screen share to grid with close button
+  addVideoToGrid(shareId, stream, label, false, true);
 
-  // Handle user stopping share
+  // Handle user stopping share via system
   stream.getVideoTracks()[0].onended = () => {
-    stopScreenShare();
+    stopScreenShare(shareId);
     showToast('Screen sharing stopped', 'info');
   };
 
-  showToast('Screen sharing started', 'success');
+  showToast('Screen sharing started: ' + label, 'success');
   updateVoiceUI();
 }
 
-// Stop screen sharing
-function stopScreenShare() {
-  if (state.screenStream) {
-    state.screenStream.getTracks().forEach(t => t.stop());
-    state.screenStream = null;
+// Stop a specific screen share or all if no shareId
+function stopScreenShare(shareId) {
+  if (shareId) {
+    // Stop specific share
+    if (state.screenStreams[shareId]) {
+      state.screenStreams[shareId].getTracks().forEach(t => t.stop());
+      delete state.screenStreams[shareId];
+      removeVideoFromGrid(shareId);
+    }
+  } else {
+    // Stop all shares
+    for (const id in state.screenStreams) {
+      state.screenStreams[id].getTracks().forEach(t => t.stop());
+      removeVideoFromGrid(id);
+    }
+    state.screenStreams = {};
   }
-  state.isScreenSharing = false;
+
+  state.isScreenSharing = Object.keys(state.screenStreams).length > 0;
 
   if (state.socket) {
-    state.socket.emit('screen:stop');
+    state.socket.emit('screen:stop', { shareId });
   }
 
-  removeVideoFromGrid('local-screen');
   updateVoiceUI();
 }
 
 // Add video element to the video grid
-function addVideoToGrid(id, stream, label, isMirrored = false) {
+function addVideoToGrid(id, stream, label, isMirrored = false, showCloseButton = false) {
   const grid = document.getElementById('videoGrid');
   if (!grid) return;
 
@@ -873,9 +915,11 @@ function addVideoToGrid(id, stream, label, isMirrored = false) {
   const tile = document.createElement('div');
   tile.className = 'video-tile';
   tile.id = `video-tile-${id}`;
+  tile.style.cssText = 'position: relative; background: var(--bg-dark); border-radius: 8px; overflow: hidden;';
   tile.innerHTML = `
-    <video id="video-${id}" autoplay playsinline ${isMirrored ? 'style="transform: scaleX(-1);"' : ''}></video>
-    <div class="video-label">${escapeHtml(label)}</div>
+    <video id="video-${id}" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; ${isMirrored ? 'transform: scaleX(-1);' : ''}"></video>
+    <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
+    ${showCloseButton ? `<button onclick="stopScreenShare('${id}')" style="position: absolute; top: 8px; right: 8px; background: rgba(255,0,0,0.8); border: none; color: white; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;">✕</button>` : ''}
   `;
 
   grid.appendChild(tile);
@@ -1100,6 +1144,22 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
           <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
           <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+          <button class="btn-secondary" onclick="openGroupsModal()">Groups</button>
+          <button class="btn-secondary" onclick="openFederationModal()">Federation</button>
+        </div>
+        <h4 style="margin-top: 16px; color: var(--text-muted);">Features</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn-secondary" onclick="openFileShareAdminModal()">File Sharing</button>
+        </div>
+        <h4 style="margin-top: 16px; color: var(--text-muted);">Media Bots</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn-secondary" onclick="openYouTubeBotModal()">YouTube</button>
+          <button class="btn-secondary" onclick="openPlexBotModal()">Plex</button>
+          <button class="btn-secondary" onclick="openEmbyBotModal()">Emby</button>
+          <button class="btn-secondary" onclick="openJellyfinBotModal()">Jellyfin</button>
+          <button class="btn-secondary" onclick="openSpotifyBotModal()">Spotify</button>
+          <button class="btn-secondary" onclick="openIPTVBotModal()">IPTV</button>
+          <button class="btn-secondary" onclick="openChromeBotModal()">Chrome</button>
         </div>
       </div>
       ` : ''}
@@ -1500,6 +1560,2261 @@ async function updateUserRole(userId, role) {
     showToast('Failed to update role: ' + error.message, 'error');
     openAdminPanel(); // Refresh the list
   }
+}
+
+// YouTube Bot Modal
+async function openYouTubeBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>YouTube Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="youtubeBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  // Load bot status
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderYouTubeBotContent(data);
+  } catch (error) {
+    document.getElementById('youtubeBotContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load YouTube bot status: ${error.message}</p>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+        Make sure the server has ytdl-core installed: <code>npm install @distube/ytdl-core</code>
+      </p>
+    `;
+  }
+}
+
+function renderYouTubeBotContent(data) {
+  const { enabled, activeStreams } = data;
+  const streamList = activeStreams || [];
+
+  document.getElementById('youtubeBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Status:</span>
+          <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+            ${enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleYouTubeBot(${!enabled})">
+          ${enabled ? 'Disable Bot' : 'Enable Bot'}
+        </button>
+      </div>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Video</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Channel:</label>
+          <select id="ytBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            ${state.channels.filter(c => c.type === 'voice').map(c => `
+              <option value="${c._id}">${escapeHtml(c.name)}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">URL:</label>
+          <input type="text" id="ytBotUrl" placeholder="YouTube video URL" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-primary" onclick="playYouTubeVideo()">Play</button>
+          <button class="btn-secondary" onclick="previewYouTubeVideo()">Preview Info</button>
+        </div>
+        <div id="ytVideoPreview" style="display: none; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${streamList.length})</h3>
+      <div id="ytActiveStreams" style="margin-top: 12px;">
+        ${streamList.length > 0 ? streamList.map(stream => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(stream.title || 'Unknown')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                Channel: ${escapeHtml(stream.channelName || stream.channelId)} •
+                By: ${escapeHtml(stream.requestedBy || 'Unknown')}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="stopYouTubeStream('${stream.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+      ${streamList.length > 0 ? `
+        <button class="btn-danger" onclick="stopAllYouTubeStreams()" style="margin-top: 12px;">Stop All Streams</button>
+      ` : ''}
+    </div>
+    ` : `
+    <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+      <p>Enable the bot to play YouTube videos in voice channels.</p>
+    </div>
+    `}
+  `;
+}
+
+async function toggleYouTubeBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/enable`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ enabled })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message, 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to toggle bot: ' + error.message, 'error');
+  }
+}
+
+async function previewYouTubeVideo() {
+  const url = document.getElementById('ytBotUrl').value.trim();
+  if (!url) {
+    showToast('Please enter a YouTube URL', 'error');
+    return;
+  }
+
+  const preview = document.getElementById('ytVideoPreview');
+  preview.style.display = 'block';
+  preview.innerHTML = 'Loading video info...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/video-info?url=${encodeURIComponent(url)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    preview.innerHTML = `
+      <div style="display: flex; gap: 12px;">
+        ${data.thumbnail ? `<img src="${data.thumbnail}" style="width: 120px; height: 68px; border-radius: 4px; object-fit: cover;">` : ''}
+        <div>
+          <div style="font-weight: 600;">${escapeHtml(data.title)}</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+            ${escapeHtml(data.author)} • ${data.duration || 'Unknown duration'}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    preview.innerHTML = `<span style="color: var(--danger);">Failed to load: ${error.message}</span>`;
+  }
+}
+
+async function playYouTubeVideo() {
+  const channelId = document.getElementById('ytBotChannel').value;
+  const url = document.getElementById('ytBotUrl').value.trim();
+
+  if (!channelId) {
+    showToast('Please select a channel', 'error');
+    return;
+  }
+  if (!url) {
+    showToast('Please enter a YouTube URL', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/play`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId, url })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(`Now playing: ${result.title || 'Video'}`, 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to play video: ' + error.message, 'error');
+  }
+}
+
+async function stopYouTubeStream(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Playback stopped', 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to stop: ' + error.message, 'error');
+  }
+}
+
+async function stopAllYouTubeStreams() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/youtube-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({})
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('All streams stopped', 'success');
+    openYouTubeBotModal(); // Refresh
+  } catch (error) {
+    showToast('Failed to stop streams: ' + error.message, 'error');
+  }
+}
+
+// ==================== Plex Bot Modal ====================
+async function openPlexBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Plex Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="plexBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderPlexBotContent(data);
+  } catch (error) {
+    document.getElementById('plexBotContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load Plex bot status: ${error.message}</p>
+    `;
+  }
+}
+
+function renderPlexBotContent(data) {
+  const { enabled, connected, activeStreams, serverInfo } = data;
+  const streamList = activeStreams || [];
+
+  document.getElementById('plexBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Status:</span>
+          <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+            ${enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--text-muted);">Plex:</span>
+          <span style="color: ${connected ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">
+            ${connected ? 'Connected' : 'Not Connected'}
+          </span>
+        </div>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="togglePlexBot(${!enabled})">
+          ${enabled ? 'Disable Bot' : 'Enable Bot'}
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Plex Account</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        ${connected && serverInfo ? `
+          <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+            <div style="font-weight: 600;">${escapeHtml(serverInfo.name || 'Plex Server')}</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              ${serverInfo.libraries?.length || 0} libraries available
+            </div>
+          </div>
+          <button class="btn-danger" onclick="disconnectPlex()">Disconnect Plex</button>
+        ` : `
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="min-width: 100px;">Server URL:</label>
+            <input type="text" id="plexServerUrl" placeholder="http://your-plex:32400" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="min-width: 100px;">Plex Token:</label>
+            <input type="password" id="plexToken" placeholder="Your Plex token" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted);">
+            Get your token from app.plex.tv settings or use plex-token CLI tools
+          </div>
+          <button class="btn-primary" onclick="connectPlex()">Connect to Plex</button>
+        `}
+      </div>
+    </div>
+
+    ${enabled && connected ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Media</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Channel:</label>
+          <select id="plexBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            ${state.channels.filter(c => c.type === 'voice').map(c => `
+              <option value="${c._id}">${escapeHtml(c.name)}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 80px;">Search:</label>
+          <input type="text" id="plexSearch" placeholder="Search for music, movies..." style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-secondary" onclick="searchPlex()">Search</button>
+        </div>
+        <div id="plexSearchResults" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${streamList.length})</h3>
+      <div id="plexActiveStreams" style="margin-top: 12px;">
+        ${streamList.length > 0 ? streamList.map(stream => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(stream.title || 'Unknown')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                Channel: ${escapeHtml(stream.channelName || stream.channelId)}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="stopPlexStream('${stream.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+      ${streamList.length > 0 ? `
+        <button class="btn-danger" onclick="stopAllPlexStreams()" style="margin-top: 12px;">Stop All Streams</button>
+      ` : ''}
+    </div>
+    ` : ''}
+  `;
+}
+
+async function togglePlexBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/enable`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ enabled })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message, 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to toggle Plex bot: ' + error.message, 'error');
+  }
+}
+
+async function connectPlex() {
+  const serverUrl = document.getElementById('plexServerUrl').value.trim();
+  const token = document.getElementById('plexToken').value.trim();
+
+  if (!serverUrl || !token) {
+    showToast('Please enter server URL and token', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/connect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ serverUrl, token })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Connected to Plex!', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to connect: ' + error.message, 'error');
+  }
+}
+
+async function disconnectPlex() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Disconnected from Plex', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to disconnect: ' + error.message, 'error');
+  }
+}
+
+async function searchPlex() {
+  const query = document.getElementById('plexSearch').value.trim();
+  if (!query) {
+    showToast('Please enter a search query', 'error');
+    return;
+  }
+
+  const resultsDiv = document.getElementById('plexSearchResults');
+  resultsDiv.innerHTML = 'Searching...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/search?query=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    const results = data.results || [];
+    resultsDiv.innerHTML = results.length > 0 ? results.map(item => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer;" onclick="playPlexItem('${item.ratingKey}')">
+        ${item.thumb ? `<img src="${state.serverUrl}/api/admin/plex-bot/thumb?key=${encodeURIComponent(item.thumb)}" style="width: 48px; height: 48px; border-radius: 4px; object-fit: cover;">` : ''}
+        <div style="flex: 1;">
+          <div style="font-weight: 500;">${escapeHtml(item.title)}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(item.type)} ${item.year ? '(' + item.year + ')' : ''}</div>
+        </div>
+        <button class="btn-primary" style="padding: 6px 12px;" onclick="event.stopPropagation(); playPlexItem('${item.ratingKey}')">Play</button>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No results found</p>';
+  } catch (error) {
+    resultsDiv.innerHTML = `<span style="color: var(--danger);">Search failed: ${error.message}</span>`;
+  }
+}
+
+async function playPlexItem(ratingKey) {
+  const channelId = document.getElementById('plexBotChannel').value;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/play`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId, ratingKey })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(`Now playing: ${result.title || 'Media'}`, 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to play: ' + error.message, 'error');
+  }
+}
+
+async function stopPlexStream(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ channelId })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Playback stopped', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to stop: ' + error.message, 'error');
+  }
+}
+
+async function stopAllPlexStreams() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({})
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('All Plex streams stopped', 'success');
+    openPlexBotModal();
+  } catch (error) {
+    showToast('Failed to stop streams: ' + error.message, 'error');
+  }
+}
+
+// ==================== Federation Modal ====================
+async function openFederationModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Federation</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="federationContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderFederationContent(data);
+  } catch (error) {
+    document.getElementById('federationContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load federation status: ${error.message}</p>
+    `;
+  }
+}
+
+function renderFederationContent(data) {
+  const { enabled, serverId, serverName, servers, pendingRequests } = data;
+
+  document.getElementById('federationContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>This Server</h3>
+      <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-top: 12px;">
+        <div style="font-weight: 600;">${escapeHtml(serverName || 'F7Lans Server')}</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+          ID: ${serverId || 'Unknown'}<br>
+          Federation: ${enabled ? '<span style="color: var(--success);">Enabled</span>' : '<span style="color: var(--danger);">Disabled</span>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Join Federation</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 100px;">Server URL:</label>
+          <input type="text" id="federationTargetUrl" placeholder="https://other-server.com" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" onclick="analyzeFederation()">Analyze</button>
+          <button class="btn-primary" onclick="initiateFederation()">Connect</button>
+        </div>
+        <div id="federationAnalysis" style="display: none; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);"></div>
+      </div>
+    </div>
+
+    ${pendingRequests && pendingRequests.length > 0 ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Pending Requests (${pendingRequests.length})</h3>
+      <div style="margin-top: 12px;">
+        ${pendingRequests.map(req => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(req.fromServer?.name || 'Unknown Server')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(req.fromServer?.url || '')}
+              </div>
+            </div>
+            <button class="btn-primary" onclick="approveFederationRequest('${req._id}')" style="padding: 6px 12px;">Approve</button>
+            <button class="btn-danger" onclick="rejectFederationRequest('${req._id}')" style="padding: 6px 12px;">Reject</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="settings-section">
+      <h3>Connected Servers (${servers?.filter(s => s.status === 'active').length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${servers && servers.length > 0 ? servers.map(server => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: ${server.status === 'active' ? 'var(--success)' : 'var(--danger)'};"></div>
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(server.name)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(server.url)} • ${server.status}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="removeFederatedServer('${server.serverId}')" style="padding: 6px 12px;">Remove</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No federated servers</p>'}
+      </div>
+    </div>
+  `;
+}
+
+async function analyzeFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  const analysisDiv = document.getElementById('federationAnalysis');
+  analysisDiv.style.display = 'block';
+  analysisDiv.innerHTML = 'Analyzing...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    analysisDiv.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 8px;">Server: ${escapeHtml(data.targetServer?.name || 'Unknown')}</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+        Users: ${data.targetServer?.stats?.userCount || 0} •
+        Channels: ${data.targetServer?.stats?.channelCount || 0}
+      </div>
+      ${data.hasConflicts ? `
+        <div style="color: var(--warning); font-size: 12px;">
+          ${data.conflicts.length} channel name conflict(s) detected
+        </div>
+      ` : `
+        <div style="color: var(--success); font-size: 12px;">No conflicts detected</div>
+      `}
+    `;
+  } catch (error) {
+    analysisDiv.innerHTML = `<span style="color: var(--danger);">Analysis failed: ${error.message}</span>`;
+  }
+}
+
+async function initiateFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/initiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message || 'Federation request sent!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Federation failed: ' + error.message, 'error');
+  }
+}
+
+async function approveFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation approved!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to approve: ' + error.message, 'error');
+  }
+}
+
+async function rejectFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ reason: 'Rejected by admin' })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation request rejected', 'info');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to reject: ' + error.message, 'error');
+  }
+}
+
+async function removeFederatedServer(serverId) {
+  if (!confirm('Are you sure you want to remove this federated server?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/servers/${serverId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Server removed from federation', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to remove server: ' + error.message, 'error');
+  }
+}
+
+// ==================== Kick User Function ====================
+async function kickUserFromChannel(userId, channelId) {
+  if (!confirm('Are you sure you want to kick this user from the channel?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/channels/${channelId}/kick/${userId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('User kicked from channel', 'success');
+  } catch (error) {
+    showToast('Failed to kick user: ' + error.message, 'error');
+  }
+}
+
+// ==================== Emby Bot Modal ====================
+async function openEmbyBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Emby Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="embyBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/emby-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderMediaBotContent('emby', data);
+  } catch (error) {
+    document.getElementById('embyBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+// ==================== Jellyfin Bot Modal ====================
+async function openJellyfinBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Jellyfin Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="jellyfinBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/jellyfin-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderMediaBotContent('jellyfin', data);
+  } catch (error) {
+    document.getElementById('jellyfinBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+// Generic media bot content renderer (Emby/Jellyfin)
+function renderMediaBotContent(botType, data) {
+  const { enabled, connected, serverInfo, activeStreams } = data;
+  const streamList = activeStreams || [];
+  const contentId = `${botType}BotContent`;
+
+  document.getElementById(contentId).innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <span style="color: ${connected ? 'var(--success)' : 'var(--text-muted)'};">${connected ? 'Connected' : 'Not Connected'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleMediaBot('${botType}', ${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Server Connection</h3>
+      ${connected && serverInfo ? `
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-top: 12px;">
+          <div style="font-weight: 600;">${escapeHtml(serverInfo.name || 'Server')}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Version: ${serverInfo.version || 'Unknown'}</div>
+        </div>
+        <button class="btn-danger" onclick="disconnectMediaBot('${botType}')" style="margin-top: 8px;">Disconnect</button>
+      ` : `
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+          <input type="text" id="${botType}ServerUrl" placeholder="Server URL (http://server:port)" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <input type="password" id="${botType}ApiKey" placeholder="API Key" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-primary" onclick="connectMediaBot('${botType}')">Connect</button>
+        </div>
+      `}
+    </div>
+
+    ${enabled && connected ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Media</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <select id="${botType}Channel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="${botType}Search" placeholder="Search..." style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-secondary" onclick="searchMediaBot('${botType}')">Search</button>
+        </div>
+        <div id="${botType}Results" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${streamList.length})</h3>
+      <div style="margin-top: 12px;">
+        ${streamList.length > 0 ? streamList.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(s.title || 'Unknown')}</div>
+            </div>
+            <button class="btn-danger" onclick="stopMediaBot('${botType}', '${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleMediaBot(botType, enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    if (botType === 'emby') openEmbyBotModal();
+    else if (botType === 'jellyfin') openJellyfinBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function connectMediaBot(botType) {
+  const serverUrl = document.getElementById(`${botType}ServerUrl`).value.trim();
+  const apiKey = document.getElementById(`${botType}ApiKey`).value.trim();
+  if (!serverUrl || !apiKey) { showToast('Please enter server URL and API key', 'error'); return; }
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ serverUrl, apiKey })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Connected!', 'success');
+    if (botType === 'emby') openEmbyBotModal();
+    else if (botType === 'jellyfin') openJellyfinBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function disconnectMediaBot(botType) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Disconnected', 'success');
+    if (botType === 'emby') openEmbyBotModal();
+    else if (botType === 'jellyfin') openJellyfinBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function searchMediaBot(botType) {
+  const query = document.getElementById(`${botType}Search`).value.trim();
+  if (!query) { showToast('Enter a search term', 'error'); return; }
+  const resultsDiv = document.getElementById(`${botType}Results`);
+  resultsDiv.innerHTML = 'Searching...';
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/search?query=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    resultsDiv.innerHTML = data.results?.length > 0 ? data.results.map(item => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+        <div style="flex: 1;"><div style="font-weight: 500;">${escapeHtml(item.title)}</div><div style="font-size: 12px; color: var(--text-muted);">${item.type}</div></div>
+        <button class="btn-primary" onclick="playMediaBot('${botType}', '${item.itemId}')" style="padding: 6px 12px;">Play</button>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No results</p>';
+  } catch (error) {
+    resultsDiv.innerHTML = `<span style="color: var(--danger);">${error.message}</span>`;
+  }
+}
+
+async function playMediaBot(botType, itemId) {
+  const channelId = document.getElementById(`${botType}Channel`).value;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId, itemId })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(`Playing: ${result.title || 'Media'}`, 'success');
+    if (botType === 'emby') openEmbyBotModal();
+    else if (botType === 'jellyfin') openJellyfinBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopMediaBot(botType, channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/${botType}-bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Stopped', 'success');
+    if (botType === 'emby') openEmbyBotModal();
+    else if (botType === 'jellyfin') openJellyfinBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Chrome Bot Modal ====================
+async function openChromeBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Chrome Bot (Shared Browser)</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="chromeBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderChromeBotContent(data);
+  } catch (error) {
+    document.getElementById('chromeBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderChromeBotContent(data) {
+  const { enabled, activeSessions } = data;
+  document.getElementById('chromeBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleChromeBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Allows users to share a browser session that everyone in the channel can view and control.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Start Session</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <select id="chromeChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <input type="text" id="chromeStartUrl" value="https://google.com" placeholder="Starting URL" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <button class="btn-primary" onclick="startChromeSession()">Start Browser Session</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Sessions (${activeSessions?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeSessions?.length > 0 ? activeSessions.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500; word-break: break-all;">${escapeHtml(s.url)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">${s.participantCount} participants • Controller: ${escapeHtml(s.controller)}</div>
+            </div>
+            <button class="btn-danger" onclick="stopChromeSession('${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active sessions</p>'}
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleChromeBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    openChromeBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function startChromeSession() {
+  const channelId = document.getElementById('chromeChannel').value;
+  const url = document.getElementById('chromeStartUrl').value.trim();
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId, url })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Browser session started', 'success');
+    openChromeBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopChromeSession(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Session stopped', 'success');
+    openChromeBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== IPTV Bot Modal ====================
+async function openIPTVBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>IPTV Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="iptvBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderIPTVBotContent(data);
+  } catch (error) {
+    document.getElementById('iptvBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderIPTVBotContent(data) {
+  const { enabled, configured, channelCount, groupCount, hasEPG, activeStreams, scheduledRecordingsCount } = data;
+  document.getElementById('iptvBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <span style="color: ${configured ? 'var(--success)' : 'var(--text-muted)'};">${configured ? `${channelCount} channels` : 'Not Configured'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleIPTVBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Configure IPTV</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <input type="text" id="iptvPlaylistUrl" placeholder="M3U Playlist URL" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <input type="text" id="iptvEpgUrl" placeholder="EPG/XMLTV URL (optional)" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <button class="btn-primary" onclick="configureIPTV()">Load Playlist</button>
+      </div>
+    </div>
+
+    ${enabled && configured ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Watch TV</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <select id="iptvVoiceChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn-secondary" onclick="loadIPTVChannels()">Load Channel Guide</button>
+        <div id="iptvChannelList" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${activeStreams?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeStreams?.length > 0 ? activeStreams.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(s.iptvChannel)}</div>
+              ${s.currentProgram ? `<div style="font-size: 12px; color: var(--text-muted);">Now: ${escapeHtml(s.currentProgram)}</div>` : ''}
+            </div>
+            <button class="btn-danger" onclick="stopIPTV('${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-top: 16px;">
+      <h3>Scheduled Recordings (${scheduledRecordingsCount || 0})</h3>
+      <button class="btn-secondary" onclick="loadIPTVRecordings()" style="margin-top: 8px;">View Recordings</button>
+      <div id="iptvRecordings" style="margin-top: 12px;"></div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleIPTVBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    openIPTVBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function configureIPTV() {
+  const playlistUrl = document.getElementById('iptvPlaylistUrl').value.trim();
+  const epgUrl = document.getElementById('iptvEpgUrl').value.trim();
+  if (!playlistUrl) { showToast('Playlist URL required', 'error'); return; }
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ playlistUrl, epgUrl: epgUrl || undefined })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(`Loaded ${result.channelCount} channels`, 'success');
+    openIPTVBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function loadIPTVChannels() {
+  const listDiv = document.getElementById('iptvChannelList');
+  listDiv.innerHTML = 'Loading...';
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/channels`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    listDiv.innerHTML = data.channels?.length > 0 ? data.channels.slice(0, 50).map(ch => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 4px;">
+        ${ch.logo ? `<img src="${ch.logo}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover;">` : ''}
+        <div style="flex: 1;"><div style="font-weight: 500;">${escapeHtml(ch.name)}</div><div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(ch.group)}</div></div>
+        <button class="btn-primary" onclick="playIPTV('${ch.id}')" style="padding: 4px 8px; font-size: 12px;">Watch</button>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No channels</p>';
+  } catch (error) {
+    listDiv.innerHTML = `<span style="color: var(--danger);">${error.message}</span>`;
+  }
+}
+
+async function playIPTV(iptvChannelId) {
+  const voiceChannelId = document.getElementById('iptvVoiceChannel').value;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ voiceChannelId, iptvChannelId })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(`Now watching: ${result.channel}`, 'success');
+    openIPTVBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopIPTV(voiceChannelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ voiceChannelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Stopped', 'success');
+    openIPTVBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function loadIPTVRecordings() {
+  const div = document.getElementById('iptvRecordings');
+  div.innerHTML = 'Loading...';
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/recordings`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    const all = [...(data.scheduled || []), ...(data.recordings || [])];
+    div.innerHTML = all.length > 0 ? all.map(r => `
+      <div style="padding: 8px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 4px;">
+        <div style="font-weight: 500;">${escapeHtml(r.programTitle)}</div>
+        <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.channelName)} • ${r.status}</div>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No recordings</p>';
+  } catch (error) {
+    div.innerHTML = `<span style="color: var(--danger);">${error.message}</span>`;
+  }
+}
+
+// ==================== Spotify Bot Modal ====================
+async function openSpotifyBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Spotify Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="spotifyBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderSpotifyBotContent(data);
+  } catch (error) {
+    document.getElementById('spotifyBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderSpotifyBotContent(data) {
+  const { enabled, configured, connected, user, activeStreams } = data;
+  document.getElementById('spotifyBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <span style="color: ${connected ? 'var(--success)' : 'var(--text-muted)'};">${connected ? 'Connected' : 'Not Connected'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleSpotifyBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Spotify Account</h3>
+      ${connected && user ? `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-top: 12px;">
+          ${user.image ? `<img src="${user.image}" style="width: 48px; height: 48px; border-radius: 50%;">` : ''}
+          <div>
+            <div style="font-weight: 600;">${escapeHtml(user.name || 'Spotify User')}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${user.premium ? 'Premium' : 'Free'} Account</div>
+          </div>
+        </div>
+        <button class="btn-danger" onclick="disconnectSpotify()" style="margin-top: 8px;">Disconnect</button>
+      ` : !configured ? `
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+          <p style="color: var(--text-muted); font-size: 12px;">Enter your Spotify API credentials from developer.spotify.com</p>
+          <input type="text" id="spotifyClientId" placeholder="Client ID" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <input type="password" id="spotifyClientSecret" placeholder="Client Secret" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-primary" onclick="configureSpotify()">Configure</button>
+        </div>
+      ` : `
+        <div style="margin-top: 12px;">
+          <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Click below to authorize with Spotify</p>
+          <button class="btn-primary" onclick="authorizeSpotify()">Connect to Spotify</button>
+        </div>
+      `}
+    </div>
+
+    ${enabled && connected ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Play Music</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <select id="spotifyChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="spotifySearch" placeholder="Search tracks, albums, playlists..." style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-secondary" onclick="searchSpotify()">Search</button>
+        </div>
+        <div id="spotifyResults" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${activeStreams?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeStreams?.length > 0 ? activeStreams.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(s.track || 'Unknown')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(s.artist || '')} • Queue: ${s.queueLength || 0}</div>
+            </div>
+            <button class="btn-secondary" onclick="skipSpotify('${s.channelId}')" style="padding: 6px 12px;">Skip</button>
+            <button class="btn-danger" onclick="stopSpotify('${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleSpotifyBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function configureSpotify() {
+  const clientId = document.getElementById('spotifyClientId').value.trim();
+  const clientSecret = document.getElementById('spotifyClientSecret').value.trim();
+  if (!clientId || !clientSecret) { showToast('Enter client ID and secret', 'error'); return; }
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ clientId, clientSecret })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Configured! Now connect to Spotify.', 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function authorizeSpotify() {
+  const redirectUri = `${state.serverUrl}/api/admin/spotify-bot/callback`;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/auth-url?redirectUri=${encodeURIComponent(redirectUri)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    window.open(data.url, '_blank', 'width=500,height=700');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function disconnectSpotify() {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Disconnected', 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function searchSpotify() {
+  const query = document.getElementById('spotifySearch').value.trim();
+  if (!query) { showToast('Enter search term', 'error'); return; }
+  const div = document.getElementById('spotifyResults');
+  div.innerHTML = 'Searching...';
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/search?query=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    div.innerHTML = data.results?.length > 0 ? data.results.filter(r => r.type === 'track').slice(0, 10).map(track => `
+      <div style="display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 4px;">
+        ${track.image ? `<img src="${track.image}" style="width: 40px; height: 40px; border-radius: 4px;">` : ''}
+        <div style="flex: 1;"><div style="font-weight: 500;">${escapeHtml(track.name)}</div><div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(track.artist)}</div></div>
+        <button class="btn-primary" onclick="playSpotify('${track.uri}')" style="padding: 4px 8px; font-size: 12px;">Play</button>
+        <button class="btn-secondary" onclick="queueSpotify('${track.uri}')" style="padding: 4px 8px; font-size: 12px;">Queue</button>
+      </div>
+    `).join('') : '<p style="color: var(--text-muted);">No results</p>';
+  } catch (error) {
+    div.innerHTML = `<span style="color: var(--danger);">${error.message}</span>`;
+  }
+}
+
+async function playSpotify(uri) {
+  const channelId = document.getElementById('spotifyChannel').value;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId, uri })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(`Playing: ${result.name || 'Track'}`, 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function queueSpotify(uri) {
+  const channelId = document.getElementById('spotifyChannel').value;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/queue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId, uri })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(`Added to queue: ${result.name || 'Track'}`, 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function skipSpotify(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/skip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Skipped', 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopSpotify(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/spotify-bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Stopped', 'success');
+    openSpotifyBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Groups Management Modal ====================
+async function openGroupsModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Groups & Access Control</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="groupsContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+  await loadGroupsContent();
+}
+
+async function loadGroupsContent() {
+  try {
+    const [groupsRes, featuresRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/features`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupsData = await groupsRes.json();
+    const featuresData = await featuresRes.json();
+    if (!groupsRes.ok) throw new Error(groupsData.error);
+
+    const groups = groupsData.groups || [];
+    const features = featuresData.features || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>Create New Group</h3>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <input type="text" id="newGroupName" placeholder="Group name" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <button class="btn-primary" onclick="createGroup()">Create</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Groups (${groups.length})</h3>
+        <div id="groupsList" style="margin-top: 12px;">
+          ${groups.map(group => `
+            <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div>
+                  <div style="font-weight: 600; font-size: 14px;">${escapeHtml(group.name)}</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(group.description || 'No description')}</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-secondary" onclick="editGroupPermissions('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Permissions</button>
+                  <button class="btn-secondary" onclick="manageGroupMembers('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Members</button>
+                  ${!group.isDefault ? `<button class="btn-danger" onclick="deleteGroup('${group.id}')" style="padding: 4px 8px; font-size: 12px;">Delete</button>` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    document.getElementById('groupsContent').innerHTML = `<p style="color: var(--danger);">Failed to load groups: ${error.message}</p>`;
+  }
+}
+
+async function createGroup() {
+  const name = document.getElementById('newGroupName').value.trim();
+  if (!name) { showToast('Enter group name', 'error'); return; }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ name })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Group created', 'success');
+    await loadGroupsContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function deleteGroup(groupId) {
+  if (!confirm('Are you sure you want to delete this group?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Group deleted', 'success');
+    await loadGroupsContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function editGroupPermissions(groupId) {
+  try {
+    const [groupRes, permsRes, featuresRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}/permissions`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/features`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupData = await groupRes.json();
+    const permsData = await permsRes.json();
+    const featuresData = await featuresRes.json();
+
+    if (!groupRes.ok) throw new Error(groupData.error);
+
+    const group = groupData.group;
+    const permissions = permsData.permissions || {};
+    const features = featuresData.features || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadGroupsContent()">← Back to Groups</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>Permissions for: ${escapeHtml(group.name)}</h3>
+        <div style="margin-top: 12px;">
+          ${features.map(feature => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+              <div>
+                <div style="font-weight: 500;">${escapeHtml(feature.name)}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(feature.description)}</div>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="perm-${feature.id}" ${permissions[feature.id] ? 'checked' : ''} onchange="updateGroupPermission('${groupId}', '${feature.id}', this.checked)">
+                <span style="font-size: 12px; color: var(--text-muted);">${permissions[feature.id] ? 'Allowed' : 'Denied'}</span>
+              </label>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to load permissions: ' + error.message, 'error');
+  }
+}
+
+async function updateGroupPermission(groupId, featureId, allowed) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ permissions: { [featureId]: allowed } })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    // Update the label
+    const checkbox = document.getElementById(`perm-${featureId}`);
+    if (checkbox) {
+      const label = checkbox.parentElement.querySelector('span');
+      if (label) label.textContent = allowed ? 'Allowed' : 'Denied';
+    }
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function manageGroupMembers(groupId) {
+  try {
+    const [groupRes, membersRes, usersRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/groups/${groupId}/members`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/admin/users`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const groupData = await groupRes.json();
+    const membersData = await membersRes.json();
+    const usersData = await usersRes.json();
+
+    if (!groupRes.ok) throw new Error(groupData.error);
+
+    const group = groupData.group;
+    const members = membersData.members || [];
+    const users = usersData.users || [];
+
+    document.getElementById('groupsContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadGroupsContent()">← Back to Groups</button>
+      </div>
+
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>Members of: ${escapeHtml(group.name)}</h3>
+        ${group.id === 'everyone' ? `
+          <p style="color: var(--text-muted); margin-top: 8px;">All users are automatically members of this group.</p>
+        ` : `
+          <div style="margin-top: 12px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+              <select id="addUserToGroup" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+                <option value="">Select user to add...</option>
+                ${users.filter(u => !members.includes(u._id)).map(u => `
+                  <option value="${u._id}">${escapeHtml(u.displayName || u.username)} (@${escapeHtml(u.username)})</option>
+                `).join('')}
+              </select>
+              <button class="btn-primary" onclick="addUserToGroup('${groupId}')">Add</button>
+            </div>
+
+            <div id="membersList">
+              ${members.length > 0 ? members.map(memberId => {
+                const user = users.find(u => u._id === memberId);
+                return user ? `
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-lighter); display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                        ${user.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style="font-weight: 500;">${escapeHtml(user.displayName || user.username)}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">@${escapeHtml(user.username)}</div>
+                      </div>
+                    </div>
+                    <button class="btn-danger" onclick="removeUserFromGroup('${groupId}', '${memberId}')" style="padding: 4px 8px; font-size: 12px;">Remove</button>
+                  </div>
+                ` : '';
+              }).join('') : '<p style="color: var(--text-muted);">No members in this group yet.</p>'}
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to load members: ' + error.message, 'error');
+  }
+}
+
+async function addUserToGroup(groupId) {
+  const userId = document.getElementById('addUserToGroup').value;
+  if (!userId) { showToast('Select a user', 'error'); return; }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/users/${userId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('User added to group', 'success');
+    await manageGroupMembers(groupId);
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function removeUserFromGroup(groupId, userId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/groups/${groupId}/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('User removed from group', 'success');
+    await manageGroupMembers(groupId);
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== File Share Admin Modal ====================
+async function openFileShareAdminModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>File Sharing</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="fileShareContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/file-share/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderFileShareContent(data);
+  } catch (error) {
+    document.getElementById('fileShareContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderFileShareContent(data) {
+  const { enabled, totalSharedFolders, usersSharing, onlineUsers } = data;
+
+  document.getElementById('fileShareContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+          ${enabled ? 'Enabled' : 'Disabled'}
+        </span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleFileShare(${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">
+        When enabled, users with the "file-share" permission can share folders with other users.
+      </p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Statistics</h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px;">
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${totalSharedFolders}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Shared Folders</div>
+        </div>
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${usersSharing}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Users Sharing</div>
+        </div>
+        <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); text-align: center;">
+          <div style="font-size: 24px; font-weight: 600; color: var(--accent-primary);">${onlineUsers}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Online Users</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>How It Works</h3>
+      <div style="color: var(--text-muted); font-size: 13px; line-height: 1.6; margin-top: 12px;">
+        <p>1. Users mark local folders as "shared" from their client</p>
+        <p>2. Other users can browse and download files from shared folders</p>
+        <p>3. Files are transferred peer-to-peer when both users are online</p>
+        <p>4. Access is controlled by group permissions</p>
+      </div>
+    </div>
+    ` : `
+    <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+      <p>Enable file sharing to allow users to share folders with each other.</p>
+      <p style="font-size: 12px; margin-top: 8px;">Make sure to grant the "file-share" permission to appropriate groups.</p>
+    </div>
+    `}
+  `;
+}
+
+async function toggleFileShare(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/file-share/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(result.message, 'success');
+    openFileShareAdminModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== User File Share Modal ====================
+async function openFileShareModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Shared Files</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="userFileShareContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+  await loadUserFileShareContent();
+}
+
+async function loadUserFileShareContent() {
+  try {
+    // Check permissions first
+    const permsRes = await fetch(`${state.serverUrl}/api/permissions/me`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const permsData = await permsRes.json();
+
+    if (!permsData.permissions?.['file-share']) {
+      document.getElementById('userFileShareContent').innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+          <p>File sharing is not available to you.</p>
+          <p style="font-size: 12px; margin-top: 8px;">Ask an admin to grant you access.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const [myFoldersRes, allFoldersRes] = await Promise.all([
+      fetch(`${state.serverUrl}/api/file-share/my-folders`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${state.serverUrl}/api/file-share/folders`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+
+    const myFoldersData = await myFoldersRes.json();
+    const allFoldersData = await allFoldersRes.json();
+
+    if (!myFoldersRes.ok) throw new Error(myFoldersData.error);
+
+    const myFolders = myFoldersData.folders || [];
+    const allFolders = (allFoldersData.folders || []).filter(f => f.userId !== state.user._id);
+
+    document.getElementById('userFileShareContent').innerHTML = `
+      <div class="settings-section" style="margin-bottom: 16px;">
+        <h3>My Shared Folders (${myFolders.length})</h3>
+        <div style="margin-top: 12px;">
+          <button class="btn-primary" onclick="selectFolderToShare()" style="margin-bottom: 12px;">
+            + Share a Folder
+          </button>
+
+          <div id="mySharedFoldersList">
+            ${myFolders.length > 0 ? myFolders.map(folder => `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <span style="font-size: 20px;">📁</span>
+                  <div>
+                    <div style="font-weight: 500;">${escapeHtml(folder.folderName)}</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(folder.folderPath)}</div>
+                  </div>
+                </div>
+                <button class="btn-danger" onclick="unshareFolder('${folder.folderId}')" style="padding: 4px 8px; font-size: 12px;">Unshare</button>
+              </div>
+            `).join('') : '<p style="color: var(--text-muted);">You haven\'t shared any folders yet.</p>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Browse Shared Files</h3>
+        <div style="margin-top: 12px;">
+          ${allFolders.length > 0 ? `
+            <div id="sharedFoldersBrowser">
+              ${Object.entries(allFolders.reduce((acc, f) => {
+                if (!acc[f.username]) acc[f.username] = [];
+                acc[f.username].push(f);
+                return acc;
+              }, {})).map(([username, folders]) => `
+                <div style="margin-bottom: 12px;">
+                  <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
+                    ${escapeHtml(username)}'s Folders
+                  </div>
+                  ${folders.map(folder => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px; margin-left: 12px;">
+                      <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 20px;">📁</span>
+                        <div>
+                          <div style="font-weight: 500;">${escapeHtml(folder.folderName)}</div>
+                          <div style="font-size: 11px; color: var(--text-muted);">Shared ${new Date(folder.sharedAt).toLocaleDateString()}</div>
+                        </div>
+                      </div>
+                      <button class="btn-secondary" onclick="browseSharedFolder('${folder.userId}', '${folder.folderId}', '${escapeHtml(folder.folderName)}')" style="padding: 4px 8px; font-size: 12px;">Browse</button>
+                    </div>
+                  `).join('')}
+                </div>
+              `).join('')}
+            </div>
+          ` : '<p style="color: var(--text-muted);">No shared folders from other users.</p>'}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    document.getElementById('userFileShareContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load: ${error.message}</p>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">File sharing may be disabled by an admin.</p>
+    `;
+  }
+}
+
+async function selectFolderToShare() {
+  if (window.electronAPI && window.electronAPI.selectFolder) {
+    try {
+      const result = await window.electronAPI.selectFolder();
+      if (result && result.path) {
+        await shareSelectedFolder(result.path, result.name || result.path.split(/[/\\]/).pop());
+      }
+    } catch (error) {
+      showToast('Failed to select folder: ' + error.message, 'error');
+    }
+  } else {
+    // Fallback for web: prompt for path
+    const folderPath = prompt('Enter the full path to the folder you want to share:');
+    if (folderPath) {
+      const folderName = prompt('Enter a name for this shared folder:', folderPath.split(/[/\\]/).pop());
+      if (folderName) {
+        await shareSelectedFolder(folderPath, folderName);
+      }
+    }
+  }
+}
+
+async function shareSelectedFolder(folderPath, folderName) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/folders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ folderPath, folderName })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Folder shared!', 'success');
+    await loadUserFileShareContent();
+  } catch (error) {
+    showToast('Failed to share folder: ' + error.message, 'error');
+  }
+}
+
+async function unshareFolder(folderId) {
+  if (!confirm('Stop sharing this folder?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/folders/${folderId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Folder unshared', 'success');
+    await loadUserFileShareContent();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function browseSharedFolder(userId, folderId, folderName, subPath = '') {
+  try {
+    const response = await fetch(
+      `${state.serverUrl}/api/file-share/users/${userId}/folders/${folderId}/contents?subPath=${encodeURIComponent(subPath)}`,
+      { headers: { 'Authorization': `Bearer ${state.token}` } }
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 500 && data.error?.includes('offline')) {
+        showToast('User is offline. Files are only available when the owner is online.', 'error');
+      } else {
+        throw new Error(data.error);
+      }
+      return;
+    }
+
+    const contents = data.contents || [];
+    const pathParts = subPath ? subPath.split('/').filter(p => p) : [];
+
+    document.getElementById('userFileShareContent').innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button class="btn-secondary" onclick="loadUserFileShareContent()">← Back to All Folders</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>📁 ${escapeHtml(folderName)}${subPath ? ' / ' + pathParts.join(' / ') : ''}</h3>
+
+        ${subPath ? `
+          <button class="btn-secondary" onclick="browseSharedFolder('${userId}', '${folderId}', '${escapeHtml(folderName)}', '${pathParts.slice(0, -1).join('/')}')" style="margin-top: 8px; margin-bottom: 12px;">
+            ↑ Go Up
+          </button>
+        ` : ''}
+
+        <div style="margin-top: 12px;">
+          ${contents.length > 0 ? contents.map(item => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: ${item.isDirectory ? 'pointer' : 'default'};" ${item.isDirectory ? `onclick="browseSharedFolder('${userId}', '${folderId}', '${escapeHtml(folderName)}', '${subPath ? subPath + '/' : ''}${item.name}')"` : ''}>
+                <span style="font-size: 20px;">${item.isDirectory ? '📁' : '📄'}</span>
+                <div>
+                  <div style="font-weight: 500;">${escapeHtml(item.name)}</div>
+                  ${!item.isDirectory ? `<div style="font-size: 11px; color: var(--text-muted);">${formatFileSize(item.size)}</div>` : ''}
+                </div>
+              </div>
+              ${!item.isDirectory ? `
+                <button class="btn-primary" onclick="requestFileDownload('${userId}', '${folderId}', '${subPath ? subPath + '/' : ''}${item.name}')" style="padding: 4px 8px; font-size: 12px;">Download</button>
+              ` : ''}
+            </div>
+          `).join('') : '<p style="color: var(--text-muted);">This folder is empty.</p>'}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    showToast('Failed to browse: ' + error.message, 'error');
+  }
+}
+
+async function requestFileDownload(userId, folderId, filePath) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/file-share/users/${userId}/folders/${folderId}/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ filePath })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    showToast('Download requested. File transfer will start when owner responds.', 'info');
+    // In a full implementation, this would trigger P2P file transfer
+    // For now, we just show that the request was made
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) {
+    bytes /= 1024;
+    i++;
+  }
+  return bytes.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 }
 
 function getRoleColor(role) {

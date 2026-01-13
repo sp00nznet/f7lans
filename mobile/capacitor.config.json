@@ -1,0 +1,39 @@
+{
+  "appId": "com.f7lans.mobile",
+  "appName": "F7Lans",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "hostname": "f7lans.local"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0a0a0f",
+      "androidSplashResourceName": "splash",
+      "showSpinner": true,
+      "spinnerColor": "#ff8c00"
+    },
+    "StatusBar": {
+      "style": "Dark",
+      "backgroundColor": "#0a0a0f"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    }
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "allowsLinkPreview": false,
+    "backgroundColor": "#0a0a0f"
+  },
+  "android": {
+    "backgroundColor": "#0a0a0f",
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}
