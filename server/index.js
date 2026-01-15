@@ -11,7 +11,7 @@ const { Server } = require('socket.io');
 
 const connectDB = require('./config/database');
 const apiRoutes = require('./routes/api');
-const { initializeSocket } = require('./socket/socketHandler');
+const { initializeSocket, initBotCommandService } = require('./socket/socketHandler');
 const User = require('./models/User');
 const Channel = require('./models/Channel');
 
@@ -94,7 +94,10 @@ initializeSocket(io);
 // Federation service (optional)
 let federationService = null;
 
-// YouTube bot service
+// Bot services collection for command handler
+const botServices = {};
+
+// Individual service references
 let youtubeBotService = null;
 
 // Plex bot service
@@ -164,6 +167,7 @@ const startServer = async () => {
       const youtubeBotController = require('./controllers/youtubeBotController');
       youtubeBotService = new YouTubeBotService(io);
       youtubeBotController.initialize(youtubeBotService);
+      botServices.youtubeBot = youtubeBotService;
       console.log('YouTube bot service initialized');
     } catch (err) {
       console.error('YouTube bot service failed to initialize:', err.message);
@@ -208,6 +212,7 @@ const startServer = async () => {
       const chromeBotController = require('./controllers/chromeBotController');
       const chromeBotService = new ChromeBotService(io);
       chromeBotController.initialize(chromeBotService);
+      botServices.chromeBot = chromeBotService;
       console.log('Chrome bot service initialized');
     } catch (err) {
       console.error('Chrome bot service failed to initialize:', err.message);
@@ -266,9 +271,18 @@ const startServer = async () => {
       const emulatorBotController = require('./controllers/emulatorBotController');
       const emulatorBotService = new EmulatorBotService(io);
       emulatorBotController.initialize(emulatorBotService);
+      botServices.emulatorBot = emulatorBotService;
       console.log('Emulator bot service initialized (xemu, flycast, dolphin, rpcs3)');
     } catch (err) {
       console.error('Emulator bot service failed to initialize:', err.message);
+    }
+
+    // Initialize Bot Command Service (text channel ! commands)
+    try {
+      initBotCommandService(io, botServices);
+      console.log('Bot command service initialized (text channel ! commands)');
+    } catch (err) {
+      console.error('Bot command service failed to initialize:', err.message);
     }
 
     // Start server

@@ -639,6 +639,123 @@ body {
   font-size: 13px;
 }
 
+/* Bot Messages */
+.bot-message {
+  background: var(--bg-medium);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid;
+  margin: 4px 0;
+}
+
+.bot-message.bot-error {
+  border-left-color: var(--danger);
+  background: rgba(255, 92, 138, 0.1);
+}
+
+.bot-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bot-icon {
+  font-size: 20px;
+}
+
+.bot-badge {
+  background: var(--accent-primary);
+  color: var(--bg-darkest);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.bot-name {
+  font-weight: 700;
+}
+
+.bot-content {
+  white-space: pre-wrap;
+}
+
+.bot-content.error-text {
+  color: var(--danger);
+}
+
+/* Bot Images */
+.bot-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.bot-image {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.bot-image:hover {
+  transform: scale(1.05);
+}
+
+/* Bot YouTube */
+.bot-youtube {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  background: var(--bg-darker);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.bot-thumbnail {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.bot-youtube-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bot-youtube-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.bot-youtube-author {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Bot Poll */
+.bot-poll-options {
+  margin-top: 12px;
+}
+
+.bot-poll-option {
+  background: var(--bg-darker);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+
+.poll-votes {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* Message Input */
 .message-input-container {
   padding: 0 16px 24px;

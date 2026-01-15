@@ -348,6 +348,30 @@ function connectSocket() {
     renderMessages();
   });
 
+  // Bot response handler
+  state.socket.on('bot:response', (response) => {
+    if (state.currentChannel && response.channelId === state.currentChannel._id) {
+      // Create a bot message object to display
+      const botMessage = {
+        _id: `bot-${Date.now()}`,
+        isBot: true,
+        bot: response.bot,
+        type: response.type,
+        content: response.content,
+        data: response.data,
+        createdAt: new Date(response.timestamp),
+        author: {
+          username: response.bot,
+          displayName: response.bot,
+          avatar: null
+        }
+      };
+      state.messages.push(botMessage);
+      renderMessages();
+      scrollToBottom();
+    }
+  });
+
   // Voice handlers
   state.socket.on('voice:userJoined', (data) => {
     showToast(`${data.user.displayName || data.user.username} joined voice`, 'info');
@@ -689,6 +713,13 @@ function renderMessages() {
   let lastAuthor = null;
 
   for (const msg of state.messages) {
+    // Handle bot messages
+    if (msg.isBot) {
+      html += renderBotMessage(msg);
+      lastAuthor = null; // Reset so next user message shows full header
+      continue;
+    }
+
     const author = msg.author;
     const time = new Date(msg.createdAt);
     const showHeader = lastAuthor !== author._id;
@@ -720,6 +751,82 @@ function renderMessages() {
   }
 
   container.innerHTML = html;
+}
+
+// Render bot message with special styling
+function renderBotMessage(msg) {
+  const time = new Date(msg.createdAt);
+  const timeStr = formatTime(time);
+
+  // Bot colors based on bot name
+  const botColors = {
+    'System': '#5865f2',
+    'ImageBot': '#eb459e',
+    'YouTubeBot': '#ff0000',
+    'ChromeBot': '#4285f4',
+    'TwitchBot': '#9146ff',
+    'EmulatorBot': '#00d4aa',
+    'AIChat': '#10a37f',
+    'PollBot': '#faa61a',
+    'TriviaBot': '#ed4245',
+    'FactsBot': '#57f287',
+    'RPGBot': '#f47fff',
+    'StarCitizenBot': '#00a8e8',
+    'ActivityBot': '#faa61a',
+    'SpotifyBot': '#1db954'
+  };
+
+  const botColor = botColors[msg.bot] || '#5865f2';
+  const isError = msg.type === 'error';
+
+  // Format content with markdown-like support
+  let content = escapeHtml(msg.content || '')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+
+  // Add special data rendering
+  let dataHtml = '';
+  if (msg.data) {
+    if (msg.type === 'images' && msg.data.images) {
+      dataHtml = '<div class="bot-images">';
+      for (const img of msg.data.images.slice(0, 4)) {
+        dataHtml += `<img src="${escapeHtml(img.url || img)}" class="bot-image" onclick="window.open('${escapeHtml(img.url || img)}', '_blank')">`;
+      }
+      dataHtml += '</div>';
+    } else if (msg.type === 'youtube' && msg.data.thumbnail) {
+      dataHtml = `<div class="bot-youtube">
+        <img src="${escapeHtml(msg.data.thumbnail)}" class="bot-thumbnail">
+        <div class="bot-youtube-info">
+          <div class="bot-youtube-title">${escapeHtml(msg.data.title || '')}</div>
+          <div class="bot-youtube-author">${escapeHtml(msg.data.author || '')}</div>
+        </div>
+      </div>`;
+    } else if (msg.type === 'poll' && msg.data.options) {
+      dataHtml = '<div class="bot-poll-options">';
+      msg.data.options.forEach((opt, i) => {
+        const votes = msg.data.voteCounts?.[i + 1] || 0;
+        dataHtml += `<div class="bot-poll-option">${i + 1}. ${escapeHtml(opt)} <span class="poll-votes">(${votes} votes)</span></div>`;
+      });
+      dataHtml += '</div>';
+    }
+  }
+
+  return `
+    <div class="message-group bot-message ${isError ? 'bot-error' : ''}">
+      <div class="message-avatar bot-avatar" style="background: ${botColor};">
+        <span class="bot-icon">🤖</span>
+      </div>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-author bot-name" style="color: ${botColor};">${escapeHtml(msg.bot)}</span>
+          <span class="bot-badge">BOT</span>
+          <span class="message-timestamp">${timeStr}</span>
+        </div>
+        <div class="message-text bot-content ${isError ? 'error-text' : ''}">${content}</div>
+        ${dataHtml}
+      </div>
+    </div>
+  `;
 }
 
 // Voice functions

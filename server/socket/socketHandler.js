@@ -5,6 +5,7 @@ const Message = require('../models/Message');
 const DirectMessage = require('../models/DirectMessage');
 const { FederationServer, FederatedChannel } = require('../models/Federation');
 const { verifyAuthHeader } = require('../config/federation');
+const { BotCommandService } = require('../services/botCommandService');
 
 // Connected users map
 const connectedUsers = new Map();
@@ -16,8 +17,20 @@ const federatedServerSockets = new Map();
 // Federation service reference (set after initialization)
 let federationService = null;
 
+// Bot command service reference (set after initialization)
+let botCommandService = null;
+
 const setFederationService = (service) => {
   federationService = service;
+};
+
+const setBotCommandService = (service) => {
+  botCommandService = service;
+};
+
+const initBotCommandService = (io, services) => {
+  botCommandService = new BotCommandService(io, services);
+  return botCommandService;
 };
 
 const initializeSocket = (io) => {
@@ -255,29 +268,29 @@ const handleUserConnection = async (io, socket) => {
         return socket.emit('error', { message: 'Message content required' });
       }
 
-      // Check for YouTube bot command
-      let messageType = 'text';
-      let youtubeData = null;
+      // Process bot commands
+      let botResponse = null;
+      if (botCommandService && content.startsWith('!')) {
+        const result = await botCommandService.processMessage(
+          content,
+          channelId,
+          user,
+          socket.voiceChannel
+        );
 
-      if (content.startsWith('!play ') || content.startsWith('!youtube ')) {
-        const query = content.replace(/^!(play|youtube)\s+/, '');
-        messageType = 'youtube';
-        youtubeData = {
-          videoId: 'placeholder',
-          title: query,
-          thumbnail: '',
-          duration: ''
-        };
+        if (result.isCommand && result.response) {
+          botResponse = result.response;
+        }
       }
 
+      // Create and save the user's message
       const message = new Message({
         channel: channelId,
         author: user._id,
         content,
-        type: messageType,
+        type: 'text',
         replyTo,
-        attachments: attachments || [],
-        youtubeData
+        attachments: attachments || []
       });
 
       await message.save();
@@ -287,8 +300,13 @@ const handleUserConnection = async (io, socket) => {
         await message.populate('replyTo', 'content author');
       }
 
-      // Broadcast to local clients
+      // Broadcast user message to local clients
       io.to(`channel:${channelId}`).emit('message:new', message);
+
+      // Send bot response if there was a command
+      if (botResponse) {
+        botCommandService.sendBotResponse(channelId, botResponse);
+      }
 
       // Relay to federated servers if this is a federated channel
       const channel = await Channel.findById(channelId);
@@ -783,5 +801,7 @@ module.exports = {
   userSockets,
   federatedServerSockets,
   setFederationService,
+  setBotCommandService,
+  initBotCommandService,
   broadcastToFederation
 };
