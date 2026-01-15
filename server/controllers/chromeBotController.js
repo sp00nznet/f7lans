@@ -32,6 +32,34 @@ const setEnabled = async (req, res) => {
   }
 };
 
+const setSafeSearch = async (req, res) => {
+  try {
+    if (!chromeBotService) {
+      return res.status(503).json({ error: 'Chrome bot service not initialized' });
+    }
+    const { safeSearch } = req.body;
+    const result = chromeBotService.setSafeSearch(safeSearch);
+    res.json({ message: safeSearch ? 'Safe search enabled' : 'Safe search disabled', ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const configure = async (req, res) => {
+  try {
+    if (!chromeBotService) {
+      return res.status(503).json({ error: 'Chrome bot service not initialized' });
+    }
+    const { blockedDomains } = req.body;
+    if (blockedDomains !== undefined) {
+      chromeBotService.setBlockedDomains(blockedDomains);
+    }
+    res.json({ message: 'Configuration saved', blockedDomains: chromeBotService.blockedDomains });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 const startSession = async (req, res) => {
   try {
     if (!chromeBotService) {
@@ -174,6 +202,6 @@ const transferControl = async (req, res) => {
 };
 
 module.exports = {
-  initialize, getStatus, setEnabled, startSession, getSession,
+  initialize, getStatus, setEnabled, setSafeSearch, configure, startSession, getSession,
   navigate, goBack, goForward, refresh, stopSession, joinSession, transferControl
 };
