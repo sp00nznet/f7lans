@@ -1,393 +1,326 @@
 <p align="center">
-  <img src="client/public/logo192.png" alt="F7Lans Logo" width="120" height="120">
+  <img src="client/public/logo192.png" alt="F7Lans Logo" width="150" height="150">
 </p>
 
-```
+<h1 align="center">
+  <pre>
 ███████╗███████╗██╗      █████╗ ███╗   ██╗███████╗
 ██╔════╝╚════██║██║     ██╔══██╗████╗  ██║██╔════╝
 █████╗      ██╔╝██║     ███████║██╔██╗ ██║███████╗
 ██╔══╝     ██╔╝ ██║     ██╔══██║██║╚██╗██║╚════██║
 ██║        ██║  ███████╗██║  ██║██║ ╚████║███████║
 ╚═╝        ╚═╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
-```
-
-<h1 align="center">F7Lans</h1>
+  </pre>
+</h1>
 
 <p align="center">
-  <strong>Where Gamers Connect, Play, and Build Communities</strong>
+  <strong>The Self-Hosted Gaming Community Platform</strong><br>
+  <sub>Voice, Video, Streaming, Emulators, Media Bots, File Sharing, Federation — All in One</sub>
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> •
-  <a href="#-features">Features</a> •
-  <a href="#-media-bots">Media Bots</a> •
-  <a href="#-federation">Federation</a> •
-  <a href="docs/INSTALLATION.md">Installation</a> •
-  <a href="docs/API.md">API</a>
+  <a href="#-feature-overview">Features</a> •
+  <a href="#-media-bots">Bots</a> •
+  <a href="#-emulator-multiplayer">Emulators</a> •
+  <a href="#-comparison">Compare</a> •
+  <a href="#-documentation">Docs</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-orange?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/node-%3E%3D18-blue?style=flat-square" alt="Node">
-  <img src="https://img.shields.io/badge/docker-ready-blue?style=flat-square" alt="Docker">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Web-lightgrey?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/version-1.0.0-ff8c00?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/license-MIT-4ecdc4?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node">
+  <img src="https://img.shields.io/badge/docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux">
+  <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/Web-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Web">
 </p>
 
 ---
 
-## Hey, Gamers!
+## What is F7Lans?
 
-Tired of Discord's bloat? Want something you actually **own** and **control**?
+**F7Lans** is a fully-featured, self-hosted alternative to Discord built specifically for gaming communities. Run your own server, keep your data private, and enjoy features that would cost money elsewhere — completely free.
 
-**F7Lans** is a self-hosted gaming community platform built for gamers, by gamers. Set up your own server, invite your squad, and game together without Big Tech watching over your shoulder.
-
-### Why F7Lans?
-
-- **Your Server, Your Rules** — Host it yourself, keep your data private
-- **Built for Gaming** — Steam integration, game matching, minimal resource usage
-- **Media Streaming** — YouTube, Plex, Emby, Jellyfin, Twitch, IPTV, Spotify bots built-in
-- **Federation Ready** — Connect multiple servers into one mega-community
-- **File Sharing** — Share folders peer-to-peer with your community
-- **Actually Free** — No premium tiers, no nitro, no BS
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                                                                      │
+│   Your Server          Your Data          Your Rules                 │
+│        ⬇                   ⬇                  ⬇                      │
+│   ┌─────────┐         ┌─────────┐        ┌─────────┐                │
+│   │  Host   │         │ Private │        │  No     │                │
+│   │ Locally │         │ MongoDB │        │ Nitro   │                │
+│   └─────────┘         └─────────┘        └─────────┘                │
+│                                                                      │
+│   13 Built-in Bots • 4 Emulators • Federation • File Sharing        │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Quick Start
 
-Get up and running in under 5 minutes:
+**Get running in under 5 minutes:**
 
-### Option 1: Docker (Recommended)
+### Docker (Recommended)
 
 ```bash
-# Clone the repo
 git clone https://github.com/yourusername/f7lans.git
 cd f7lans
 
-# Windows users - just double-click:
+# Windows - just double-click:
 scripts/quickstart.bat
 
-# Or manually:
+# Or run manually:
 docker-compose up -d
 ```
 
-### Option 2: Manual Setup
+### Manual Setup
 
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment
 cp .env.example .env
-
-# Start the server
 npm start
 ```
 
-**That's it!** Open `http://localhost:3001` and log in:
-- **Username:** `admin`
-- **Password:** `admin123`
-
-> **First thing to do:** Change that password!
+**Open `http://localhost:3001`**
+Default login: `admin` / `admin123` (change this immediately!)
 
 ---
 
-## Features
+## Feature Overview
 
 ### Communication
 
 | Feature | Description |
-|---------|-------------|
-| **Text Chat** | Real-time messaging with markdown support |
-| **Voice Chat** | Crystal-clear audio with push-to-talk or voice activation |
-| **Voice Notifications** | Soft tones when users join/leave voice channels |
-| **Video Chat** | Face-to-face with your squad |
-| **Screen Share** | Share your gameplay, multiple windows at once |
-| **Direct Messages** | Private convos with friends |
-| **Image Sharing** | Drag & drop images and GIFs into chat |
+|:--------|:------------|
+| **Text Chat** | Real-time messaging, markdown, reactions, pins, typing indicators |
+| **Voice Chat** | Crystal-clear WebRTC audio with echo/noise cancellation |
+| **Video Chat** | HD video calls (720p/1080p) with grid view |
+| **Screen Share** | Share screens, windows, or tabs — multiple at once |
+| **Direct Messages** | Private conversations with online status |
 
 ### Gaming Integration
 
 | Feature | Description |
-|---------|-------------|
-| **Steam Profiles** | Link your Steam account |
-| **Game Matching** | See games you share with friends |
-| **Play Suggestions** | AI suggests games based on shared playtime |
-| **Minimal Footprint** | Sits quietly in your system tray while you game |
+|:--------|:------------|
+| **Steam Integration** | OAuth verification, profile linking |
+| **Game Matching** | Find common games with friends |
+| **Play Suggestions** | AI recommendations based on playtime |
+| **Activity Tracking** | See who's playing what, with stats |
+| **Leaderboards** | Server-wide gaming statistics |
 
-### Community Tools
+### Community Management
 
 | Feature | Description |
-|---------|-------------|
-| **Channels** | Organize discussions by topic (text and voice) |
-| **Per-Channel Bots** | Enable/disable bots on a per-channel basis |
-| **Groups & Permissions** | Create groups and control feature access |
-| **Admin Delegation** | Grant admin panel access to trusted users |
-| **Server Branding** | Custom server icon uploaded from client |
-| **Email Invites** | Bring your friends aboard |
-| **User Profiles** | Customizable with avatars and display names |
-| **File Sharing** | Share folders with other users (P2P) |
+|:--------|:------------|
+| **Channels** | Text, voice, video, and announcement channels |
+| **Groups & Permissions** | Role-based access control for every feature |
+| **Per-Channel Bot Control** | Enable/disable bots per channel |
+| **Email Invites** | Send invites with expiration and max uses |
+| **Admin Delegation** | Grant admin access to trusted users |
+| **Server Branding** | Custom server icon and name |
+
+### Security
+
+| Feature | Description |
+|:--------|:------------|
+| **Two-Factor Auth (2FA)** | TOTP with backup codes |
+| **Social Account Linking** | Steam, Xbox, PlayStation, Blizzard, Reddit, Twitter |
+| **Password Security** | Bcrypt hashing, secure requirements |
+| **JWT Authentication** | Token-based sessions |
+
+### Desktop App
+
+| Feature | Description |
+|:--------|:------------|
+| **System Tray** | Minimize while gaming |
+| **Push-to-Talk** | Configurable hotkeys |
+| **Voice Activation** | Hands-free communication |
+| **Multi-Server** | Connect to multiple F7Lans servers |
+| **Low Resources** | Won't tank your FPS |
 
 ---
 
 ## Media Bots
 
-F7Lans includes 12 built-in bots that admins can enable for their community:
+F7Lans includes **13 built-in bots** — all free, no subscriptions required:
 
-### YouTube Bot
-Stream YouTube videos in voice channels.
-- Paste a URL, everyone watches together
-- Video info preview before playing
-- Multiple streams in different channels
+### Streaming Bots
 
-### Plex Bot
-Stream media from your Plex Media Server.
-- Connect with your Plex token
-- Search your library
-- Stream movies, shows, and music to voice channels
+| Bot | Description | Source |
+|:----|:------------|:-------|
+| **YouTube** | Stream videos to voice channels | YouTube |
+| **Plex** | Stream from your Plex server | Plex Media Server |
+| **Emby** | Stream from Emby | Emby Media Server |
+| **Jellyfin** | Stream from Jellyfin | Jellyfin (free Plex alt) |
+| **IPTV** | Live TV with EPG guide | M3U playlists |
+| **Spotify** | Collaborative music with queue | Spotify Premium |
+| **Twitch** | Watch streams together | Twitch |
 
-### Emby Bot
-Stream from Emby Media Server.
-- API key authentication
-- Search and stream your library
-- Support for movies, series, and music
+### Utility Bots
 
-### Jellyfin Bot
-Stream from Jellyfin (free Plex alternative).
-- Same features as Emby bot
-- Open-source media server support
+| Bot | Description |
+|:----|:------------|
+| **Chrome** | Shared browser sessions with control transfer |
+| **Image Search** | Google image search with NSFW filtering |
+| **Activity Stats** | Server-wide gaming leaderboards |
+| **RPG** | Tabletop text adventures (6 classes, 5 settings) |
+| **Star Citizen** | Tips, location info, server status |
 
-### IPTV Bot
-Watch live TV together with EPG support.
-- Load M3U playlists from any IPTV provider
-- XMLTV EPG (TV guide) integration
-- Channel groups and categories
-- Schedule recordings and tag users
+### Emulator Bot (NEW!)
 
-### Spotify Bot
-Collaborative music playback.
-- OAuth connection to Spotify
-- Search tracks, albums, playlists
-- Queue system for fair play
-- Everyone hears the same music
+| Bot | Description |
+|:----|:------------|
+| **Emulator** | Play retro games together with 4 players! |
 
-### Chrome Bot
-Shared browser sessions.
-- Start a shared Chromium instance
-- Navigate together
-- Transfer control between users
-- Great for watching videos, browsing together
-
-### Twitch Bot
-Watch Twitch streams together.
-- Search for live streams
-- Get stream info (title, game, viewers)
-- Embedded player and chat
-- Watch parties for your favorite streamers
-
-### Image Search Bot
-Search and share images (NSFW filtered).
-- Google Custom Search integration
-- Safe search enforced by default
-- Commands: `!image`, `!next`, `!random`
-- Per-channel access control
-
-### Star Citizen Bot
-Helpful tips for Star Citizen players.
-- Automatic tips when players are gaming
-- Category-specific hints (mining, combat, trading, exploration)
-- Location info and server status
-- Commands: `!sc`, `!schelp`, `!sclocation`
+[Full bot documentation →](docs/BOTS.md)
 
 ---
 
-## Groups & Access Control
+## Emulator Multiplayer
 
-Control who can use what features:
+**Play classic console games together in voice chat!**
 
-### How It Works
-1. **Admin creates groups** (e.g., "Trusted Members", "Music Lovers")
-2. **Assign permissions** to each group (which bots, file sharing, etc.)
-3. **Add users** to groups
-4. **Users inherit permissions** from all their groups
-
-### Available Permissions
-- Voice/text channels, screen sharing
-- Each media bot (YouTube, Plex, Emby, Jellyfin, Twitch, IPTV, Spotify, Chrome)
-- Utility bots (Activity Stats, RPG, Image Search, Star Citizen)
-- File sharing
-- Admin panel access
-
-### Default Groups
-- **Everyone** — All users, basic permissions
-- **Admins** — Full access to everything
-
----
-
-## File Sharing
-
-Share folders peer-to-peer with your community:
-
-### How It Works
-1. Admin enables file sharing
-2. Users with permission can mark local folders as "shared"
-3. Other users browse and download files
-4. Files transfer directly between users (P2P)
-
-### Features
-- Native folder picker (Electron client)
-- Browse folder contents in-app
-- Download files from online users
-- Privacy control — only share what you want
-
----
-
-## Activity Tracking
-
-See what games your community is playing:
-
-- **Live Activity** — See who's playing what right now
-- **Statistics** — Track playtime and game preferences
-- **Common Games** — Find games you share with friends
-- **Leaderboards** — See top players on your server
-
-### Activity Stats Bot
-Enable the Activity Stats Bot to share server-wide gaming statistics in channels.
-
----
-
-## RPG Bot
-
-Interactive text-based adventures:
-
-- **Create Campaigns** — Choose setting (Fantasy, Sci-Fi, Horror, etc.)
-- **Character Classes** — Warrior, Mage, Rogue, Cleric, Ranger, Bard
-- **Solo or Party** — Play alone or with friends
-- **Combat System** — Dice rolls, leveling, loot
-
-Play tabletop-style adventures without leaving F7Lans!
-
----
-
-## Social Account Linking
-
-Connect your gaming profiles:
-
-| Platform | Feature |
-|----------|---------|
-| **Steam** | OAuth verification |
-| **Reddit** | Username linking |
-| **Twitter/X** | Profile linking |
-| **Xbox** | Gamertag |
-| **PlayStation** | PSN ID |
-| **Blizzard** | BattleTag |
-
-Show your gaming identity across all platforms.
-
----
-
-## Security
-
-### Two-Factor Authentication
-
-Protect your account with 2FA:
-
-- TOTP support (Google Authenticator, Authy, etc.)
-- Backup codes for recovery
-- Enable/disable anytime
-- Required only at login
-
----
-
-## Desktop App
-
-The desktop client is built for gamers who need performance:
-
-- **System Tray** — Minimize and forget, notifications when you need them
-- **Push-to-Talk** — Configurable hotkeys
-- **Voice Activation** — Hands-free when you want it
-- **Multi-Monitor** — Share any screen or window
-- **Low Resources** — Won't tank your FPS
-- **File Sharing** — Native folder selection dialog
-
-### Building the Desktop Client
-
-```bash
-# Windows (full client with embedded server)
-scripts/build-electron.bat
-
-# Linux
-cd electron-client
-npm install
-npm run build:linux
-
-# Or manually
-cd electron-client
-npm install
-npm run build
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    EMULATOR MULTIPLAYER                        │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
+│   │   XBOX   │  │DREAMCAST │  │ GAMECUBE │  │   PS3    │     │
+│   │  (xemu)  │  │(flycast) │  │(Dolphin) │  │ (RPCS3)  │     │
+│   │ 4 Players│  │ 4 Players│  │ 4 Players│  │ 4 Players│     │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘     │
+│                                                                │
+│   [P1: You]  [P2: @friend]  [P3: Empty]  [P4: Empty]         │
+│                                                                │
+│   Video streams to voice channel                               │
+│   Controller input via Xbox gamepad on your PC                 │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-Find your installer in `electron-client/dist/`
+### Supported Emulators
 
-### Standalone Client (No Embedded Server)
+| Console | Emulator | Players | ROM Formats |
+|:--------|:---------|:-------:|:------------|
+| **Xbox** | [xemu](https://xemu.app/) | 4 | .iso, .xiso |
+| **Dreamcast** | [flycast](https://flycast.github.io/) | 4 | .gdi, .cdi, .chd |
+| **GameCube/Wii** | [Dolphin](https://dolphin-emu.org/) | 4 | .iso, .gcm, .wbfs, .rvz |
+| **PlayStation 3** | [RPCS3](https://rpcs3.net/) | 4 | .pkg, EBOOT.BIN |
 
-Want a client that connects to remote servers only? No embedded server, smaller footprint.
+### How It Works
 
-```bash
-# Windows
-scripts/build-client-standalone.bat
+1. **Join a voice channel** and click the Emulator button
+2. **Select an emulator** and choose a game from your ROM library
+3. **Video streams** to everyone in the voice channel via FFmpeg
+4. **Up to 4 players** can join by clicking on player slots
+5. **Use your Xbox controller** — input is sent at 60Hz over WebSocket
 
-# Linux
-./scripts/build-client-standalone.sh
-```
+### Controller Support
 
-The standalone client is perfect for users who just want to connect to existing F7Lans servers.
+Players use their local Xbox controllers (or any XInput-compatible gamepad):
 
-### Multi-Server Support
-
-The desktop client supports connecting to multiple F7Lans servers:
-
-- Click the **+** button in the server list to add servers
-- Switch between servers with a single click
-- Each server maintains its own connection and state
-- Right-click server icons to disconnect
+| Xbox Button | Dreamcast | GameCube | PS3 |
+|:------------|:----------|:---------|:----|
+| A | A | A | Cross |
+| B | B | B | Circle |
+| X | X | X | Square |
+| Y | Y | Y | Triangle |
+| LB/RB | L/R | L/R | L1/R1 |
+| LT/RT | Analog | Analog | L2/R2 |
 
 ---
 
 ## Federation
 
-Run multiple F7Lans servers? Connect them together!
+**Connect multiple F7Lans servers into one mega-community:**
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Server A   │────│  Server B   │────│  Server C   │
-│  50 users   │     │  30 users   │     │  75 users   │
-└─────────────┘     └─────────────┘     └─────────────┘
-        │                   │                   │
-        └───────────────────┴───────────────────┘
-                    Federated Network
-                      155 users
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Server Alpha  │────│   Server Beta   │────│   Server Gamma  │
+│    50 users     │     │    30 users     │     │    75 users     │
+│   West Coast    │     │   East Coast    │     │     Europe      │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                      │                       │
+         └──────────────────────┴───────────────────────┘
+                        Federated Network
+                          155 total users
+                     Real-time message sync
 ```
 
-**How it works:**
-1. Admin initiates federation from Server A to Server B
-2. Servers exchange authentication tokens
-3. Channels sync automatically (conflicts are resolved smartly)
-4. Messages flow between servers in real-time
+**Features:**
+- Automatic channel synchronization
+- Real-time message relay
+- Smart conflict resolution
+- HMAC-SHA256 server authentication
+- User presence across all servers
 
-[Learn more about Federation →](docs/FEDERATION.md)
+[Federation guide →](docs/FEDERATION.md)
+
+---
+
+## Comparison
+
+### F7Lans vs Discord
+
+| Feature | F7Lans | Discord Free | Discord Nitro |
+|:--------|:------:|:------------:|:-------------:|
+| **Self-Hosted** | Yes | No | No |
+| **Voice Chat** | Unlimited | Unlimited | Unlimited |
+| **Video Chat** | Yes | Yes | Yes |
+| **Screen Share** | 1080p | 720p | 1080p |
+| **Multiple Screens** | Yes | No | Yes |
+| **File Upload Limit** | Unlimited* | 25MB | 500MB |
+| **Custom Server Icon** | Yes | Yes | Yes |
+| **YouTube Bot** | Built-in | No | No |
+| **Plex/Emby/Jellyfin** | Built-in | No | No |
+| **IPTV (Live TV)** | Built-in | No | No |
+| **Spotify Bot** | Built-in | No | No |
+| **Shared Browser** | Built-in | No | No |
+| **Emulator (4-player)** | Built-in | No | No |
+| **P2P File Sharing** | Built-in | No | No |
+| **RPG Bot** | Built-in | No | No |
+| **Federation** | Yes | No | No |
+| **Steam Integration** | OAuth | Limited | Limited |
+| **Two-Factor Auth** | Yes | Yes | Yes |
+| **Custom Themes** | 5 built-in | No | No |
+| **Data Privacy** | Your server | Discord's servers | Discord's servers |
+| **Price** | **Free** | Free | $9.99/mo |
+
+<sub>* Limited by your server's disk space</sub>
+
+### Why Choose F7Lans?
+
+| You Want... | F7Lans Delivers |
+|:------------|:----------------|
+| Privacy | Your data stays on YOUR server |
+| Media streaming | 7 streaming bots built-in |
+| Retro gaming | 4 emulators with multiplayer |
+| Live TV | IPTV with EPG guide |
+| File sharing | P2P folder sharing |
+| Multiple servers | Federation support |
+| No monthly fees | Everything free, forever |
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|------------|
+|:------|:-----------|
 | **Backend** | Node.js, Express, Socket.IO |
 | **Database** | MongoDB |
 | **Frontend** | React |
 | **Desktop** | Electron |
 | **Voice/Video** | WebRTC |
+| **Video Capture** | FFmpeg |
 | **Container** | Docker |
 
 ---
@@ -395,9 +328,10 @@ Run multiple F7Lans servers? Connect them together!
 ## Documentation
 
 | Document | Description |
-|----------|-------------|
-| [Installation Guide](docs/INSTALLATION.md) | Detailed setup instructions |
+|:---------|:------------|
+| [Installation Guide](docs/INSTALLATION.md) | Docker, manual, and production setup |
 | [Features Guide](docs/FEATURES.md) | Complete feature documentation |
+| [Bots Guide](docs/BOTS.md) | All 13 bots with setup instructions |
 | [Federation Guide](docs/FEDERATION.md) | Multi-server networking |
 | [API Reference](docs/API.md) | REST & WebSocket endpoints |
 | [Architecture](docs/ARCHITECTURE.md) | System design & components |
@@ -407,57 +341,90 @@ Run multiple F7Lans servers? Connect them together!
 
 ## Admin Quick Reference
 
-### Setting Up Media Bots
+### Setting Up Bots
 
 1. Go to **Settings** → **Administration** → **Media Bots**
-2. Click the bot you want to configure
-3. Enable the bot and configure connection settings
-4. Users with permission can now use it
+2. Enable the bot and configure settings
+3. Grant permissions via **Groups**
+4. Optionally disable per-channel in channel settings
 
 ### Setting Up Groups
 
 1. Go to **Settings** → **Administration** → **Groups**
-2. Create new groups or edit existing ones
+2. Create groups (e.g., "Trusted Members", "Music Lovers")
 3. Set permissions for each group
 4. Add users to groups
 
-### Enabling File Sharing
+### Enabling Emulators
 
-1. Go to **Settings** → **Administration** → **Features** → **File Sharing**
-2. Enable file sharing globally
-3. Grant "file-share" permission to appropriate groups
-4. Users can now share folders
+1. Install emulators on your server:
+   - [xemu](https://xemu.app/) (Xbox)
+   - [flycast](https://flycast.github.io/) (Dreamcast)
+   - [Dolphin](https://dolphin-emu.org/) (GameCube/Wii)
+   - [RPCS3](https://rpcs3.net/) (PS3)
+2. Configure ROM paths in admin settings
+3. Enable the Emulator Bot
+4. Users can start sessions from voice channels
 
-### Per-Channel Bot Settings
+### Enabling Federation
 
-Control which bots are available in each channel:
+1. Go to **Settings** → **Administration** → **Federation**
+2. Click "Add Server" and enter partner server URL
+3. Exchange authentication tokens
+4. Channels sync automatically
 
-1. Go to **Channel Settings** for any channel
-2. Toggle individual bots on/off
-3. Bots are enabled by default in all channels
-4. Useful for keeping certain channels focused (e.g., music-only, gaming-only)
+---
 
-### Setting Server Icon
+## Building the Desktop Client
 
-1. Go to **Settings** → **Administration** → **Server Settings**
-2. Click "Upload Icon"
-3. Select an image file (PNG, JPG, GIF, SVG, or WebP)
-4. Icon appears in the server sidebar
+### Full Client (with embedded server)
 
-### Delegating Admin Access
+```bash
+# Windows
+scripts/build-electron.bat
 
-Grant trusted users access to the admin panel without full admin role:
+# Linux
+cd electron-client && npm run build:linux
+```
 
-1. Go to **Settings** → **Administration** → **Users**
-2. Select a user
-3. Toggle "Admin Panel Access"
-4. User can now access admin features
+### Standalone Client (remote servers only)
+
+```bash
+# Windows
+scripts/build-client-standalone.bat
+
+# Linux
+./scripts/build-client-standalone.sh
+```
+
+Installers are output to `electron-client/dist/`
+
+---
+
+## Project Structure
+
+```
+f7lans/
+├── server/                 # Node.js backend
+│   ├── services/           # Bot services (13 bots)
+│   ├── controllers/        # API controllers
+│   ├── models/             # MongoDB schemas
+│   ├── socket/             # WebSocket handlers
+│   └── routes/             # REST API routes
+├── client/                 # Web client (React)
+├── electron-client/        # Desktop client (Electron)
+│   ├── main.js             # Electron main process
+│   └── renderer/           # UI code
+├── mobile/                 # Mobile app (Capacitor)
+├── docs/                   # Documentation
+└── scripts/                # Build scripts
+```
 
 ---
 
 ## Contributing
 
-We'd love your help making F7Lans better!
+We welcome contributions!
 
 1. Fork the repo
 2. Create your feature branch (`git checkout -b feature/awesome-thing`)
@@ -465,22 +432,28 @@ We'd love your help making F7Lans better!
 4. Push to the branch (`git push origin feature/awesome-thing`)
 5. Open a Pull Request
 
+See [Development Guide](docs/DEVELOPMENT.md) for setup instructions.
+
 ---
 
 ## Community
 
-- **Issues** — Found a bug? [Let us know](https://github.com/yourusername/f7lans/issues)
-- **Discussions** — Ideas? Questions? [Start a discussion](https://github.com/yourusername/f7lans/discussions)
+- **Issues** — [Report bugs](https://github.com/yourusername/f7lans/issues)
+- **Discussions** — [Ideas & questions](https://github.com/yourusername/f7lans/discussions)
 
 ---
 
 ## License
 
-MIT License — Do whatever you want with it. Just don't blame us if something breaks.
+MIT License — Do whatever you want with it.
 
 ---
 
 <p align="center">
   <strong>Built with coffee and late-night gaming sessions</strong><br>
   <sub>F7Lans — Because your community deserves better</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/made%20with-%E2%9D%A4-ff6b6b?style=for-the-badge" alt="Made with love">
 </p>
