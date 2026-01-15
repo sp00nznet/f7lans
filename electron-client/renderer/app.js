@@ -81,6 +81,8 @@ const state = {
   theme: 'dark', // Current theme
   // Pending attachments for current message
   pendingAttachments: [],
+  // Modal navigation - track previous modal for back button
+  previousModal: null,
   // Emulator multiplayer state
   emulator: {
     session: null,      // Current emulator session
@@ -538,7 +540,7 @@ function renderMainApp() {
           <div id="participantsList"></div>
         </div>
       </div>
-      <div class="voice-actions">
+      <div class="voice-actions" style="grid-template-columns: repeat(5, 1fr);">
         <button class="action-btn" id="micBtnPanel" onclick="toggleMute()">
           <span class="icon">🎤</span>
           <span class="label">Mute</span>
@@ -551,9 +553,9 @@ function renderMainApp() {
           <span class="icon">📺</span>
           <span class="label">Share</span>
         </button>
-        <button class="action-btn" onclick="openEmulatorModal()">
-          <span class="icon">🎮</span>
-          <span class="label">Emulator</span>
+        <button class="action-btn" onclick="openBotsModal()">
+          <span class="icon">🤖</span>
+          <span class="label">Bots</span>
         </button>
         <button class="action-btn danger" onclick="leaveVoice()">
           <span class="icon">📞</span>
@@ -1646,13 +1648,25 @@ async function openSettings() {
         </div>
         <h4 style="margin-top: 16px; color: var(--text-muted);">Media Bots</h4>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button class="btn-secondary" onclick="openYouTubeBotModal()">YouTube</button>
-          <button class="btn-secondary" onclick="openPlexBotModal()">Plex</button>
-          <button class="btn-secondary" onclick="openEmbyBotModal()">Emby</button>
-          <button class="btn-secondary" onclick="openJellyfinBotModal()">Jellyfin</button>
-          <button class="btn-secondary" onclick="openSpotifyBotModal()">Spotify</button>
-          <button class="btn-secondary" onclick="openIPTVBotModal()">IPTV</button>
-          <button class="btn-secondary" onclick="openChromeBotModal()">Chrome</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('youtube')">YouTube</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('plex')">Plex</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('emby')">Emby</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('jellyfin')">Jellyfin</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('spotify')">Spotify</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('iptv')">IPTV</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('chrome')">Chrome</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('twitch')">Twitch</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('imagesearch')">Image Search</button>
+        </div>
+        <h4 style="margin-top: 16px; color: var(--text-muted);">Gaming Bots</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn-secondary" onclick="openAdminBotModal('emulator')">Emulator</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('rpg')">RPG Bot</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('starcitizen')">Star Citizen</button>
+        </div>
+        <h4 style="margin-top: 16px; color: var(--text-muted);">Utility Bots</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn-secondary" onclick="openAdminBotModal('activitystats')">Activity Stats</button>
         </div>
       </div>
       ` : ''}
@@ -3131,7 +3145,7 @@ async function openChromeBotModal() {
 }
 
 function renderChromeBotContent(data) {
-  const { enabled, activeSessions } = data;
+  const { enabled, activeSessions, safeSearch, blockedDomains } = data;
   document.getElementById('chromeBotContent').innerHTML = `
     <div class="settings-section" style="margin-bottom: 16px;">
       <h3>Bot Status</h3>
@@ -3140,6 +3154,23 @@ function renderChromeBotContent(data) {
         <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleChromeBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
       </div>
       <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Allows users to share a browser session that everyone in the channel can view and control.</p>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Content Filtering</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="chromeSafeSearch" ${safeSearch !== false ? 'checked' : ''} onchange="toggleChromeSafeSearch(this.checked)" style="accent-color: var(--accent-primary);">
+          <span>Safe Search (NSFW Filter)</span>
+        </label>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">When enabled, Google and other search engines will use safe search mode to filter explicit content.</p>
+
+      <div style="margin-top: 12px;">
+        <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Blocked Domains (one per line)</label>
+        <textarea id="chromeBlockedDomains" placeholder="example.com&#10;badsite.net" style="width: 100%; height: 80px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); font-family: inherit; resize: vertical;">${(blockedDomains || []).join('\\n')}</textarea>
+        <button class="btn-secondary" onclick="saveChromeBotSettings()" style="margin-top: 8px;">Save Filter Settings</button>
+      </div>
     </div>
 
     ${enabled ? `
@@ -3170,6 +3201,39 @@ function renderChromeBotContent(data) {
     </div>
     ` : ''}
   `;
+}
+
+async function toggleChromeSafeSearch(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/safe-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ safeSearch: enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Safe search enabled' : 'Safe search disabled (NSFW allowed)', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function saveChromeBotSettings() {
+  const blockedDomains = document.getElementById('chromeBlockedDomains').value
+    .split('\n')
+    .map(d => d.trim())
+    .filter(d => d.length > 0);
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ blockedDomains })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Chrome bot settings saved', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
 }
 
 async function toggleChromeBot(enabled) {
@@ -4331,7 +4395,896 @@ function closeModal() {
     cameraTestStream.getTracks().forEach(t => t.stop());
     cameraTestStream = null;
   }
+
+  // Check if we should return to a previous modal
+  if (state.previousModal) {
+    const returnTo = state.previousModal;
+    state.previousModal = null;
+    // Call the return modal function
+    if (returnTo === 'settings') {
+      openSettings();
+    } else if (returnTo === 'bots') {
+      openBotsModal();
+    }
+    return;
+  }
+
   document.getElementById('modalOverlay').classList.remove('active');
+}
+
+// Close modal completely without returning to previous
+function closeModalFull() {
+  state.previousModal = null;
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => t.stop());
+    micTestStream = null;
+  }
+  if (cameraTestStream) {
+    cameraTestStream.getTracks().forEach(t => t.stop());
+    cameraTestStream = null;
+  }
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
+// ==================== Bot Picker Modal ====================
+// Opens from voice panel - shows all available bots to users
+function openBotsModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Channel Bots</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Select a bot to use in the current voice channel</p>
+
+      <div class="settings-section">
+        <h3>Media & Entertainment</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px;">
+          <button class="bot-tile" onclick="openUserBotModal('youtube')">
+            <span style="font-size: 32px;">🎬</span>
+            <span>YouTube</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('spotify')">
+            <span style="font-size: 32px;">🎵</span>
+            <span>Spotify</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('twitch')">
+            <span style="font-size: 32px;">📺</span>
+            <span>Twitch</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('iptv')">
+            <span style="font-size: 32px;">📡</span>
+            <span>IPTV</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('plex')">
+            <span style="font-size: 32px;">🎞️</span>
+            <span>Plex</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('jellyfin')">
+            <span style="font-size: 32px;">🎥</span>
+            <span>Jellyfin</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('emby')">
+            <span style="font-size: 32px;">🎦</span>
+            <span>Emby</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Gaming</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px;">
+          <button class="bot-tile" onclick="state.previousModal = 'bots'; openEmulatorModal();">
+            <span style="font-size: 32px;">🎮</span>
+            <span>Emulator</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('rpg')">
+            <span style="font-size: 32px;">⚔️</span>
+            <span>RPG Bot</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('starcitizen')">
+            <span style="font-size: 32px;">🚀</span>
+            <span>Star Citizen</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Tools & Utilities</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px;">
+          <button class="bot-tile" onclick="openUserBotModal('chrome')">
+            <span style="font-size: 32px;">🌐</span>
+            <span>Chrome</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('imagesearch')">
+            <span style="font-size: 32px;">🖼️</span>
+            <span>Image Search</span>
+          </button>
+          <button class="bot-tile" onclick="openUserBotModal('activitystats')">
+            <span style="font-size: 32px;">📊</span>
+            <span>Activity Stats</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Close</button>
+    </div>
+  `;
+
+  // Add bot tile styles if not present
+  if (!document.getElementById('botTileStyles')) {
+    const style = document.createElement('style');
+    style.id = 'botTileStyles';
+    style.textContent = `
+      .bot-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 12px;
+        background: var(--bg-medium);
+        border: 2px solid var(--bg-light);
+        border-radius: var(--radius-md);
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      .bot-tile:hover {
+        background: var(--bg-light);
+        border-color: var(--accent-primary);
+        color: var(--text-primary);
+        transform: translateY(-2px);
+      }
+      .bot-tile:active {
+        transform: translateY(0);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  overlay.classList.add('active');
+}
+
+// Open user-facing bot modal (for voice channel users)
+async function openUserBotModal(botType) {
+  state.previousModal = 'bots';
+
+  switch (botType) {
+    case 'youtube':
+      openYouTubeBotModal();
+      break;
+    case 'spotify':
+      openSpotifyBotModal();
+      break;
+    case 'twitch':
+      openTwitchBotModal();
+      break;
+    case 'iptv':
+      openIPTVBotModal();
+      break;
+    case 'plex':
+      openPlexBotModal();
+      break;
+    case 'jellyfin':
+      openJellyfinBotModal();
+      break;
+    case 'emby':
+      openEmbyBotModal();
+      break;
+    case 'chrome':
+      openChromeBotModal();
+      break;
+    case 'imagesearch':
+      openImageSearchBotModal();
+      break;
+    case 'rpg':
+      openRPGBotModal();
+      break;
+    case 'starcitizen':
+      openStarCitizenBotModal();
+      break;
+    case 'activitystats':
+      openActivityStatsBotModal();
+      break;
+    default:
+      showToast('Bot not yet implemented', 'warning');
+  }
+}
+
+// Open admin bot modal (from settings - returns to settings)
+function openAdminBotModal(botType) {
+  state.previousModal = 'settings';
+
+  switch (botType) {
+    case 'youtube':
+      openYouTubeBotModal();
+      break;
+    case 'spotify':
+      openSpotifyBotModal();
+      break;
+    case 'twitch':
+      openTwitchBotModal();
+      break;
+    case 'iptv':
+      openIPTVBotModal();
+      break;
+    case 'plex':
+      openPlexBotModal();
+      break;
+    case 'jellyfin':
+      openJellyfinBotModal();
+      break;
+    case 'emby':
+      openEmbyBotModal();
+      break;
+    case 'chrome':
+      openChromeBotModal();
+      break;
+    case 'imagesearch':
+      openImageSearchBotModal();
+      break;
+    case 'emulator':
+      openEmulatorAdminModal();
+      break;
+    case 'rpg':
+      openRPGBotModal();
+      break;
+    case 'starcitizen':
+      openStarCitizenBotModal();
+      break;
+    case 'activitystats':
+      openActivityStatsBotModal();
+      break;
+    default:
+      showToast('Bot admin panel not yet implemented', 'warning');
+      openSettings();
+  }
+}
+
+// ==================== Emulator Admin Modal ====================
+async function openEmulatorAdminModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Emulator Bot Configuration</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="emulatorAdminContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Back to Settings</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderEmulatorAdminContent(data);
+  } catch (error) {
+    document.getElementById('emulatorAdminContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderEmulatorAdminContent(data) {
+  const { enabled, config, activeSessions } = data;
+
+  document.getElementById('emulatorAdminContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleEmulatorBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Allows users to play multiplayer emulator games (Xbox, Dreamcast, GameCube/Wii, PS3) together in voice channels.</p>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Emulator Paths</h3>
+      <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Configure the paths to each emulator executable on the server.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Xbox (xemu)</label>
+          <input type="text" id="xemuPath" value="${config?.xbox?.path || ''}" placeholder="/usr/bin/xemu or C:\\Program Files\\xemu\\xemu.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Dreamcast (flycast)</label>
+          <input type="text" id="flycastPath" value="${config?.dreamcast?.path || ''}" placeholder="/usr/bin/flycast or C:\\Program Files\\flycast\\flycast.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">GameCube/Wii (Dolphin)</label>
+          <input type="text" id="dolphinPath" value="${config?.gamecube?.path || ''}" placeholder="/usr/bin/dolphin-emu or C:\\Program Files\\Dolphin\\Dolphin.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">PlayStation 3 (RPCS3)</label>
+          <input type="text" id="rpcs3Path" value="${config?.ps3?.path || ''}" placeholder="/usr/bin/rpcs3 or C:\\Program Files\\RPCS3\\rpcs3.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>ROM/Game Folders</h3>
+      <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Configure folders where games are stored for each emulator.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Xbox Games Folder</label>
+          <input type="text" id="xboxRomsPath" value="${config?.xbox?.romsPath || ''}" placeholder="/games/xbox or D:\\Games\\Xbox" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Dreamcast Games Folder</label>
+          <input type="text" id="dreamcastRomsPath" value="${config?.dreamcast?.romsPath || ''}" placeholder="/games/dreamcast or D:\\Games\\Dreamcast" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">GameCube/Wii Games Folder</label>
+          <input type="text" id="gamecubeRomsPath" value="${config?.gamecube?.romsPath || ''}" placeholder="/games/gamecube or D:\\Games\\GameCube" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">PS3 Games Folder</label>
+          <input type="text" id="ps3RomsPath" value="${config?.ps3?.romsPath || ''}" placeholder="/games/ps3 or D:\\Games\\PS3" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+      </div>
+
+      <button class="btn-primary" onclick="saveEmulatorConfig()" style="margin-top: 16px;">Save Configuration</button>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Sessions (${activeSessions?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeSessions?.length > 0 ? activeSessions.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(s.emulatorType)} - ${escapeHtml(s.gameName || 'Unknown Game')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">${s.playerCount}/4 players • Started by ${escapeHtml(s.startedBy)}</div>
+            </div>
+            <button class="btn-danger" onclick="forceStopEmulatorSession('${s.channelId}')" style="padding: 6px 12px;">Force Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active emulator sessions</p>'}
+      </div>
+    </div>
+  `;
+}
+
+async function toggleEmulatorBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(enabled ? 'Emulator bot enabled' : 'Emulator bot disabled', 'success');
+    openEmulatorAdminModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function saveEmulatorConfig() {
+  const config = {
+    xbox: {
+      path: document.getElementById('xemuPath').value.trim(),
+      romsPath: document.getElementById('xboxRomsPath').value.trim()
+    },
+    dreamcast: {
+      path: document.getElementById('flycastPath').value.trim(),
+      romsPath: document.getElementById('dreamcastRomsPath').value.trim()
+    },
+    gamecube: {
+      path: document.getElementById('dolphinPath').value.trim(),
+      romsPath: document.getElementById('gamecubeRomsPath').value.trim()
+    },
+    ps3: {
+      path: document.getElementById('rpcs3Path').value.trim(),
+      romsPath: document.getElementById('ps3RomsPath').value.trim()
+    }
+  };
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ config })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast('Emulator configuration saved', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function forceStopEmulatorSession(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/force-stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Session force stopped', 'success');
+    openEmulatorAdminModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Twitch Bot Modal ====================
+async function openTwitchBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Twitch Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="twitchBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderTwitchBotContent(data);
+  } catch (error) {
+    document.getElementById('twitchBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderTwitchBotContent(data) {
+  const { enabled, activeStreams } = data;
+  document.getElementById('twitchBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleTwitchBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Watch Twitch streams together in voice channels.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Watch Stream</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <select id="twitchChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <input type="text" id="twitchStreamer" placeholder="Streamer username" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <button class="btn-primary" onclick="watchTwitchStream()">Watch Stream</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Streams (${activeStreams?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeStreams?.length > 0 ? activeStreams.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(s.streamer)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">${s.viewers} watching</div>
+            </div>
+            <button class="btn-danger" onclick="stopTwitchStream('${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active streams</p>'}
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleTwitchBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Twitch bot enabled' : 'Twitch bot disabled', 'success');
+    openTwitchBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function watchTwitchStream() {
+  const channelId = document.getElementById('twitchChannel').value;
+  const streamer = document.getElementById('twitchStreamer').value.trim();
+  if (!streamer) {
+    showToast('Please enter a streamer username', 'warning');
+    return;
+  }
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId, streamer })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Now watching ' + streamer, 'success');
+    openTwitchBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopTwitchStream(channelId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Stream stopped', 'success');
+    openTwitchBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Image Search Bot Modal ====================
+async function openImageSearchBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Image Search Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="imageSearchBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/image-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderImageSearchBotContent(data);
+  } catch (error) {
+    document.getElementById('imageSearchBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderImageSearchBotContent(data) {
+  const { enabled, safeSearch } = data;
+  document.getElementById('imageSearchBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleImageSearchBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Search and share images in channels.</p>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Content Filter</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="imageSearchSafeSearch" ${safeSearch ? 'checked' : ''} onchange="toggleImageSearchSafeSearch(this.checked)" style="accent-color: var(--accent-primary);">
+          <span>Safe Search (NSFW Filter)</span>
+        </label>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">When enabled, filters out explicit/adult content from search results.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section">
+      <h3>Search Images</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <input type="text" id="imageSearchQuery" placeholder="Search query" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <button class="btn-primary" onclick="searchImages()">Search</button>
+        <div id="imageSearchResults" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 8px;"></div>
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleImageSearchBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/image-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Image Search bot enabled' : 'Image Search bot disabled', 'success');
+    openImageSearchBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function toggleImageSearchSafeSearch(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/image-bot/safe-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ safeSearch: enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Safe search enabled' : 'Safe search disabled (NSFW allowed)', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function searchImages() {
+  const query = document.getElementById('imageSearchQuery').value.trim();
+  if (!query) {
+    showToast('Please enter a search query', 'warning');
+    return;
+  }
+  try {
+    const response = await fetch(`${state.serverUrl}/api/image-search/search?q=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    const resultsDiv = document.getElementById('imageSearchResults');
+    if (data.images?.length > 0) {
+      resultsDiv.innerHTML = data.images.map(img => `
+        <img src="${escapeHtml(img.thumbnail)}" alt="${escapeHtml(img.title)}" style="width: 100%; height: 80px; object-fit: cover; border-radius: var(--radius-sm); cursor: pointer;" onclick="shareImage('${escapeHtml(img.url)}')">
+      `).join('');
+    } else {
+      resultsDiv.innerHTML = '<p style="color: var(--text-muted); grid-column: 1/-1;">No images found</p>';
+    }
+  } catch (error) {
+    showToast('Search failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== RPG Bot Modal ====================
+async function openRPGBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>RPG Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="rpgBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/rpg-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderRPGBotContent(data);
+  } catch (error) {
+    document.getElementById('rpgBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderRPGBotContent(data) {
+  const { enabled, activeGames, playerCount } = data;
+  document.getElementById('rpgBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleRPGBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Play text-based RPG adventures in channels with dice rolling, character sheets, and more.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section">
+      <h3>Stats</h3>
+      <div style="margin-top: 12px;">
+        <p style="color: var(--text-secondary);">Active Games: ${activeGames || 0}</p>
+        <p style="color: var(--text-secondary);">Total Players: ${playerCount || 0}</p>
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleRPGBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/rpg-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'RPG bot enabled' : 'RPG bot disabled', 'success');
+    openRPGBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Star Citizen Bot Modal ====================
+async function openStarCitizenBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Star Citizen Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="starCitizenBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/sc-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderStarCitizenBotContent(data);
+  } catch (error) {
+    document.getElementById('starCitizenBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderStarCitizenBotContent(data) {
+  const { enabled, trackedOrgs, trackedPlayers } = data;
+  document.getElementById('starCitizenBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleStarCitizenBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Track Star Citizen organizations, players, ships, and game status.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section">
+      <h3>Stats</h3>
+      <div style="margin-top: 12px;">
+        <p style="color: var(--text-secondary);">Tracked Organizations: ${trackedOrgs || 0}</p>
+        <p style="color: var(--text-secondary);">Tracked Players: ${trackedPlayers || 0}</p>
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleStarCitizenBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/sc-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Star Citizen bot enabled' : 'Star Citizen bot disabled', 'success');
+    openStarCitizenBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Activity Stats Bot Modal ====================
+async function openActivityStatsBotModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Activity Stats Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="activityStatsBotContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/activity-bot/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderActivityStatsBotContent(data);
+  } catch (error) {
+    document.getElementById('activityStatsBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderActivityStatsBotContent(data) {
+  const { enabled, trackedUsers, totalMessages, totalVoiceMinutes } = data;
+  document.getElementById('activityStatsBotContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Bot Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleActivityStatsBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Track user activity, message counts, voice time, and generate leaderboards.</p>
+    </div>
+
+    ${enabled ? `
+    <div class="settings-section">
+      <h3>Server Stats</h3>
+      <div style="margin-top: 12px;">
+        <p style="color: var(--text-secondary);">Tracked Users: ${trackedUsers || 0}</p>
+        <p style="color: var(--text-secondary);">Total Messages: ${totalMessages || 0}</p>
+        <p style="color: var(--text-secondary);">Total Voice Time: ${Math.round((totalVoiceMinutes || 0) / 60)} hours</p>
+      </div>
+    </div>
+    ` : ''}
+  `;
+}
+
+async function toggleActivityStatsBot(enabled) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/activity-bot/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast(enabled ? 'Activity Stats bot enabled' : 'Activity Stats bot disabled', 'success');
+    openActivityStatsBotModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
 }
 
 function disconnect() {

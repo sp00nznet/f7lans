@@ -8,7 +8,32 @@ class ChromeBotService {
   constructor(io) {
     this.io = io;
     this.enabled = false;
+    this.safeSearch = true; // NSFW filter enabled by default
+    this.blockedDomains = [];
     this.activeSessions = {}; // channelId -> { url, controller, participants, history }
+  }
+
+  setSafeSearch(enabled) {
+    this.safeSearch = enabled;
+    return { safeSearch: this.safeSearch };
+  }
+
+  setBlockedDomains(domains) {
+    this.blockedDomains = domains || [];
+    return { blockedDomains: this.blockedDomains };
+  }
+
+  isUrlBlocked(url) {
+    try {
+      const parsedUrl = new URL(url);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      return this.blockedDomains.some(domain =>
+        hostname === domain.toLowerCase() ||
+        hostname.endsWith('.' + domain.toLowerCase())
+      );
+    } catch {
+      return false;
+    }
   }
 
   setEnabled(enabled) {
@@ -268,6 +293,8 @@ class ChromeBotService {
   getStatus() {
     return {
       enabled: this.enabled,
+      safeSearch: this.safeSearch,
+      blockedDomains: this.blockedDomains,
       activeSessions: Object.entries(this.activeSessions).map(([channelId, session]) => ({
         channelId,
         url: session.url,

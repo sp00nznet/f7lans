@@ -192,6 +192,8 @@ router.post('/admin/jellyfin-bot/stop', authenticate, adminOnly, jellyfinBotCont
 // ===== Chrome Bot Routes =====
 router.get('/admin/chrome-bot/status', authenticate, adminOnly, chromeBotController.getStatus);
 router.post('/admin/chrome-bot/enable', authenticate, adminOnly, chromeBotController.setEnabled);
+router.post('/admin/chrome-bot/safe-search', authenticate, adminOnly, chromeBotController.setSafeSearch);
+router.post('/admin/chrome-bot/configure', authenticate, adminOnly, chromeBotController.configure);
 router.post('/admin/chrome-bot/start', authenticate, adminOnly, chromeBotController.startSession);
 router.get('/admin/chrome-bot/session/:channelId', authenticate, chromeBotController.getSession);
 router.post('/admin/chrome-bot/navigate', authenticate, chromeBotController.navigate);
@@ -277,6 +279,7 @@ router.get('/admin/emulator-bot/games/:emulatorType', authenticate, emulatorBotC
 router.get('/admin/emulator-bot/controller-mapping', authenticate, emulatorBotController.getControllerMapping);
 router.post('/admin/emulator-bot/start', authenticate, emulatorBotController.startSession);
 router.post('/admin/emulator-bot/stop', authenticate, emulatorBotController.stopSession);
+router.post('/admin/emulator-bot/force-stop', authenticate, adminOnly, emulatorBotController.stopSession);
 router.get('/admin/emulator-bot/session/:channelId', authenticate, emulatorBotController.getSession);
 router.post('/admin/emulator-bot/join', authenticate, emulatorBotController.joinAsPlayer);
 router.post('/admin/emulator-bot/leave', authenticate, emulatorBotController.leaveAsPlayer);
