@@ -419,6 +419,40 @@ function connectSocket() {
   state.socket.on('emulator:error', (data) => {
     showToast(`Emulator error: ${data.message}`, 'error');
   });
+
+  // ===== Game Together Event Handlers =====
+  state.socket.on('gameTogether:session-started', (data) => {
+    showToast(`🎮 Game Together session started by ${data.hostUsername}`, 'success');
+    console.log('[Game Together] Session started:', data);
+  });
+
+  state.socket.on('gameTogether:session-stopped', (data) => {
+    showToast('Game Together session ended', 'info');
+
+    // Clean up if we were in this session
+    if (state.gameTogether?.active) {
+      stopGameTogetherGamepadPolling();
+      state.gameTogether.active = false;
+      state.gameTogether.isHost = false;
+      state.gameTogether.hostUserId = null;
+      state.gameTogether.playerSlot = null;
+    }
+  });
+
+  state.socket.on('gameTogether:player-joined', (data) => {
+    showToast(`${data.username} joined as Player ${data.playerSlot}`, 'success');
+    console.log('[Game Together] Player joined:', data);
+  });
+
+  state.socket.on('gameTogether:player-left', (data) => {
+    showToast(`Player ${data.playerSlot} left the session`, 'info');
+    console.log('[Game Together] Player left:', data);
+  });
+
+  state.socket.on('gameTogether:input-received', (data) => {
+    // Input acknowledged by server (optional for debugging)
+    // console.log('[Game Together] Input received by server');
+  });
 }
 
 // Show main app UI
@@ -1201,7 +1235,7 @@ function startScreenShare(stream, shareId, label = 'Your Screen') {
   }
 
   // Add screen share to grid with close button
-  addVideoToGrid(shareId, stream, label, false, true);
+  addVideoToGrid(shareId, stream, label, false, true, true, state.user?._id);
 
   // Handle user stopping share via system
   stream.getVideoTracks()[0].onended = () => {
@@ -1241,7 +1275,7 @@ function stopScreenShare(shareId) {
 }
 
 // Add video element to the video grid
-function addVideoToGrid(id, stream, label, isMirrored = false, showCloseButton = false) {
+function addVideoToGrid(id, stream, label, isMirrored = false, showCloseButton = false, isScreenShare = false, userId = null) {
   const grid = document.getElementById('videoGrid');
   if (!grid) return;
 
@@ -1252,10 +1286,16 @@ function addVideoToGrid(id, stream, label, isMirrored = false, showCloseButton =
   tile.className = 'video-tile';
   tile.id = `video-tile-${id}`;
   tile.style.cssText = 'position: relative; background: var(--bg-dark); border-radius: 8px; overflow: hidden;';
+
+  // Determine if Game Together button should be shown
+  // Show on screen shares from other users (not your own, not on camera streams)
+  const showGameTogetherBtn = isScreenShare && !showCloseButton && userId && userId !== state.user?._id;
+
   tile.innerHTML = `
     <video id="video-${id}" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; ${isMirrored ? 'transform: scaleX(-1);' : ''}"></video>
     <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
     ${showCloseButton ? `<button onclick="stopScreenShare('${id}')" style="position: absolute; top: 8px; right: 8px; background: rgba(255,0,0,0.8); border: none; color: white; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;">✕</button>` : ''}
+    ${showGameTogetherBtn ? `<button onclick="openGameTogetherMenu('${userId}', '${escapeHtml(label)}')" style="position: absolute; top: 8px; right: 8px; background: rgba(102, 51, 153, 0.9); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">🎮 Play Together</button>` : ''}
   `;
 
   grid.appendChild(tile);
@@ -6176,19 +6216,346 @@ async function startEmulatorWithGame(emulatorType, gamePath) {
   await startEmulatorSession(emulatorType, gamePath);
 }
 
+// ==================== Game Together Functions ====================
+
+// Game Together state
+state.gameTogether = {
+  active: false,
+  isHost: false,
+  hostUserId: null,
+  playerSlot: null,
+  gamepadIndex: null,
+  pollingInterval: null
+};
+
+// Open Game Together menu
+function openGameTogetherMenu(hostUserId, hostLabel) {
+  if (!state.inVoice) {
+    showToast('Join a voice channel first', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('modalContent');
+  const overlay = document.getElementById('modalOverlay');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>🎮 Game Together</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body" style="text-align: center;">
+      <p style="margin-bottom: 24px;">Play games together with ${hostLabel}!</p>
+
+      <div style="background: var(--bg-dark); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px;">
+        <h3 style="margin-bottom: 12px;">How it works:</h3>
+        <ul style="text-align: left; color: var(--text-muted); line-height: 1.6;">
+          <li>Host starts the session (becomes Player 1)</li>
+          <li>You join and become Player 2, 3, or 4</li>
+          <li>Your controller gets mapped to the host's system</li>
+          <li>Play any local multiplayer game together!</li>
+        </ul>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button class="btn-primary" onclick="requestStartGameTogether('${hostUserId}')" style="flex: 1; max-width: 200px;">
+          🎮 Start Session
+        </button>
+        <button class="btn-primary" onclick="joinGameTogether('${hostUserId}')" style="flex: 1; max-width: 200px;">
+          👥 Join Session
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Cancel</button>
+    </div>
+  `;
+
+  overlay.style.display = 'flex';
+}
+
+// Request to start a Game Together session (as host)
+async function requestStartGameTogether(hostUserId) {
+  closeModalFull();
+
+  if (!state.voiceChannel) {
+    showToast('Join a voice channel first', 'error');
+    return;
+  }
+
+  try {
+    showToast('Starting Game Together session...', 'info');
+
+    const response = await fetch('/api/admin/game-together/start', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        channelId: state.voiceChannel
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to start session');
+    }
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = true;
+    state.gameTogether.hostUserId = state.user._id;
+    state.gameTogether.playerSlot = 1;
+
+    showToast('🎮 Game Together session started! You are Player 1', 'success');
+
+    // Note: Host uses their physical controller, no emulation needed
+  } catch (error) {
+    console.error('Failed to start Game Together session:', error);
+    showToast('Failed to start session: ' + error.message, 'error');
+  }
+}
+
+// Join an existing Game Together session
+async function joinGameTogether(hostUserId) {
+  closeModalFull();
+
+  if (!state.voiceChannel) {
+    showToast('Join a voice channel first', 'error');
+    return;
+  }
+
+  try {
+    showToast('Joining Game Together session...', 'info');
+
+    const response = await fetch('/api/admin/game-together/join', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        channelId: state.voiceChannel
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to join session');
+    }
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = hostUserId;
+    state.gameTogether.playerSlot = data.playerSlot;
+
+    showToast(`🎮 Joined as Player ${data.playerSlot}! Connect your controller.`, 'success');
+
+    // Start polling gamepad for input
+    startGameTogetherGamepadPolling();
+  } catch (error) {
+    console.error('Failed to join Game Together session:', error);
+    showToast('Failed to join session: ' + error.message, 'error');
+  }
+}
+
+// Leave Game Together session
+async function leaveGameTogether() {
+  if (!state.gameTogether.active) return;
+
+  try {
+    const response = await fetch('/api/admin/game-together/leave', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        channelId: state.voiceChannel
+      })
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to leave session');
+    }
+
+    stopGameTogetherGamepadPolling();
+
+    state.gameTogether.active = false;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = null;
+    state.gameTogether.playerSlot = null;
+
+    showToast('Left Game Together session', 'info');
+  } catch (error) {
+    console.error('Failed to leave Game Together session:', error);
+    showToast('Failed to leave session: ' + error.message, 'error');
+  }
+}
+
+// Stop Game Together session (host only)
+async function stopGameTogether() {
+  if (!state.gameTogether.active || !state.gameTogether.isHost) return;
+
+  try {
+    const response = await fetch('/api/admin/game-together/stop', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        channelId: state.voiceChannel
+      })
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to stop session');
+    }
+
+    state.gameTogether.active = false;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = null;
+    state.gameTogether.playerSlot = null;
+
+    showToast('Game Together session stopped', 'info');
+  } catch (error) {
+    console.error('Failed to stop Game Together session:', error);
+    showToast('Failed to stop session: ' + error.message, 'error');
+  }
+}
+
+// Start polling gamepad for Game Together
+function startGameTogetherGamepadPolling() {
+  if (state.gameTogether.pollingInterval) return;
+
+  console.log('[Game Together] Starting gamepad polling');
+
+  state.gameTogether.pollingInterval = setInterval(() => {
+    pollGameTogetherGamepad();
+  }, 16); // ~60 FPS
+}
+
+// Stop polling gamepad
+function stopGameTogetherGamepadPolling() {
+  if (state.gameTogether.pollingInterval) {
+    clearInterval(state.gameTogether.pollingInterval);
+    state.gameTogether.pollingInterval = null;
+    console.log('[Game Together] Stopped gamepad polling');
+  }
+}
+
+// Poll gamepad and send input to server
+function pollGameTogetherGamepad() {
+  const gamepads = navigator.getGamepads();
+
+  // Find first connected gamepad
+  let gamepad = null;
+  if (state.gameTogether.gamepadIndex !== null) {
+    gamepad = gamepads[state.gameTogether.gamepadIndex];
+  }
+
+  if (!gamepad) {
+    for (let i = 0; i < gamepads.length; i++) {
+      if (gamepads[i]) {
+        gamepad = gamepads[i];
+        state.gameTogether.gamepadIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (!gamepad) return;
+
+  // Map gamepad to Xbox controller layout
+  const inputData = {
+    buttons: {
+      A: gamepad.buttons[0]?.pressed || false,
+      B: gamepad.buttons[1]?.pressed || false,
+      X: gamepad.buttons[2]?.pressed || false,
+      Y: gamepad.buttons[3]?.pressed || false,
+      LB: gamepad.buttons[4]?.pressed || false,
+      RB: gamepad.buttons[5]?.pressed || false,
+      BACK: gamepad.buttons[8]?.pressed || false,
+      START: gamepad.buttons[9]?.pressed || false,
+      LS: gamepad.buttons[10]?.pressed || false,
+      RS: gamepad.buttons[11]?.pressed || false,
+      DPAD_UP: gamepad.buttons[12]?.pressed || false,
+      DPAD_DOWN: gamepad.buttons[13]?.pressed || false,
+      DPAD_LEFT: gamepad.buttons[14]?.pressed || false,
+      DPAD_RIGHT: gamepad.buttons[15]?.pressed || false,
+      GUIDE: gamepad.buttons[16]?.pressed || false
+    },
+    axes: {
+      LEFT_X: gamepad.axes[0] || 0,
+      LEFT_Y: gamepad.axes[1] || 0,
+      RIGHT_X: gamepad.axes[2] || 0,
+      RIGHT_Y: gamepad.axes[3] || 0,
+      LT: gamepad.buttons[6]?.value || 0,
+      RT: gamepad.buttons[7]?.value || 0
+    }
+  };
+
+  sendGameTogetherInput(inputData);
+}
+
+// Send input to server (throttled)
+let lastGameTogetherInputTime = 0;
+async function sendGameTogetherInput(inputData) {
+  const now = Date.now();
+  if (now - lastGameTogetherInputTime < 16) return; // Max 60 updates/second
+  lastGameTogetherInputTime = now;
+
+  if (!state.socket || !state.gameTogether.active) return;
+
+  // Send via Socket.IO for low latency
+  state.socket.emit('gameTogether:input', {
+    channelId: state.voiceChannel,
+    inputData
+  });
+
+  // Also send via HTTP API as backup
+  try {
+    await fetch('/api/admin/game-together/input', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        channelId: state.voiceChannel,
+        inputData
+      })
+    });
+  } catch (error) {
+    // Silently fail, socket.io is primary
+  }
+}
+
 // Gamepad connection event listeners
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Gamepad connected:', e.gamepad.id);
-  if (state.emulator.isPlayer) {
+  if (state.emulator?.isPlayer) {
     state.emulator.gamepadIndex = e.gamepad.index;
+    showToast(`Controller connected: ${e.gamepad.id}`, 'success');
+  }
+  if (state.gameTogether?.active && !state.gameTogether.isHost) {
+    state.gameTogether.gamepadIndex = e.gamepad.index;
     showToast(`Controller connected: ${e.gamepad.id}`, 'success');
   }
 });
 
 window.addEventListener('gamepaddisconnected', (e) => {
   console.log('Gamepad disconnected:', e.gamepad.id);
-  if (state.emulator.gamepadIndex === e.gamepad.index) {
+  if (state.emulator?.gamepadIndex === e.gamepad.index) {
     state.emulator.gamepadIndex = null;
+    showToast('Controller disconnected', 'warning');
+  }
+  if (state.gameTogether?.gamepadIndex === e.gamepad.index) {
+    state.gameTogether.gamepadIndex = null;
     showToast('Controller disconnected', 'warning');
   }
 });

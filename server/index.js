@@ -260,15 +260,15 @@ const startServer = async () => {
       console.error('File share service failed to initialize:', err.message);
     }
 
-    // Initialize Emulator bot service (Xbox, Dreamcast, GameCube/Wii, PS3)
+    // Initialize Game Together service (Virtual controller emulation)
     try {
-      const { EmulatorBotService } = require('./services/emulatorBotService');
-      const emulatorBotController = require('./controllers/emulatorBotController');
-      const emulatorBotService = new EmulatorBotService(io);
-      emulatorBotController.initialize(emulatorBotService);
-      console.log('Emulator bot service initialized (xemu, flycast, dolphin, rpcs3)');
+      const GameTogetherService = require('./services/gameTogetherService');
+      const gameTogetherController = require('./controllers/gameTogetherController');
+      const gameTogetherService = new GameTogetherService(io);
+      gameTogetherController.initialize(gameTogetherService);
+      console.log('Game Together service initialized (virtual controller emulation)');
     } catch (err) {
-      console.error('Emulator bot service failed to initialize:', err.message);
+      console.error('Game Together service failed to initialize:', err.message);
     }
 
     // Start server
