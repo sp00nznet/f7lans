@@ -260,6 +260,17 @@ const startServer = async () => {
       console.error('File share service failed to initialize:', err.message);
     }
 
+    // Initialize Emulator bot service (Xbox, Dreamcast, GameCube/Wii, PS3)
+    try {
+      const { EmulatorBotService } = require('./services/emulatorBotService');
+      const emulatorBotController = require('./controllers/emulatorBotController');
+      const emulatorBotService = new EmulatorBotService(io);
+      emulatorBotController.initialize(emulatorBotService);
+      console.log('Emulator bot service initialized (xemu, flycast, dolphin, rpcs3)');
+    } catch (err) {
+      console.error('Emulator bot service failed to initialize:', err.message);
+    }
+
     // Start server
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`

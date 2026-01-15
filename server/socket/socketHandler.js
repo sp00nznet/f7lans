@@ -644,6 +644,49 @@ const handleUserConnection = async (io, socket) => {
     }
   });
 
+  // ===== Emulator Bot Events =====
+  // Real-time controller input for emulator sessions
+  socket.on('emulator:input', (data) => {
+    const { channelId, inputData } = data;
+    // Forward to emulator bot service via the event system
+    // The service handles validation and processing
+    socket.emit('emulator:input-received', {
+      channelId,
+      userId: user._id,
+      timestamp: Date.now()
+    });
+  });
+
+  // Request to join as player in emulator session
+  socket.on('emulator:join-player', (data) => {
+    const { channelId, slot } = data;
+    io.to(`voice:${channelId}`).emit('emulator:player-request', {
+      channelId,
+      userId: user._id,
+      username: user.displayName || user.username,
+      slot
+    });
+  });
+
+  // Request to leave as player
+  socket.on('emulator:leave-player', (data) => {
+    const { channelId } = data;
+    io.to(`voice:${channelId}`).emit('emulator:player-leave-request', {
+      channelId,
+      userId: user._id
+    });
+  });
+
+  // Request to spectate
+  socket.on('emulator:spectate', (data) => {
+    const { channelId } = data;
+    io.to(`voice:${channelId}`).emit('emulator:spectate-request', {
+      channelId,
+      userId: user._id,
+      username: user.displayName || user.username
+    });
+  });
+
   // ===== Typing Indicators =====
   socket.on('typing:start', (channelId) => {
     socket.to(`channel:${channelId}`).emit('typing:started', {

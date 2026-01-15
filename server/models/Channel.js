@@ -66,7 +66,8 @@ const channelSchema = new mongoose.Schema({
     rpg: { enabled: { type: Boolean, default: true } },
     twitch: { enabled: { type: Boolean, default: true } },
     imageSearch: { enabled: { type: Boolean, default: true } },
-    starCitizen: { enabled: { type: Boolean, default: true } }
+    starCitizen: { enabled: { type: Boolean, default: true } },
+    emulator: { enabled: { type: Boolean, default: true } }
   }
 }, {
   timestamps: true
@@ -87,7 +88,7 @@ channelSchema.methods.isBotEnabled = function(botName) {
 
 // Get all bot settings for this channel
 channelSchema.methods.getBotSettings = function() {
-  const defaultBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg', 'twitch', 'imageSearch', 'starCitizen'];
+  const defaultBots = ['youtube', 'plex', 'emby', 'jellyfin', 'iptv', 'spotify', 'chrome', 'activityStats', 'rpg', 'twitch', 'imageSearch', 'starCitizen', 'emulator'];
   const settings = {};
 
   for (const bot of defaultBots) {
