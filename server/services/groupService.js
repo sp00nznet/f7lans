@@ -79,6 +79,7 @@ class GroupService {
       'chrome-bot': false,
       'iptv-bot': false,
       'spotify-bot': false,
+      'emulator-bot': false,
       'file-share': false
     };
 
@@ -93,6 +94,7 @@ class GroupService {
       'chrome-bot': true,
       'iptv-bot': true,
       'spotify-bot': true,
+      'emulator-bot': true,
       'file-share': true,
       'admin-panel': true
     };
@@ -128,6 +130,7 @@ class GroupService {
       'chrome-bot': false,
       'iptv-bot': false,
       'spotify-bot': false,
+      'emulator-bot': false,
       'file-share': false
     };
 
@@ -313,6 +316,7 @@ class GroupService {
         'chrome-bot': true,
         'iptv-bot': true,
         'spotify-bot': true,
+        'emulator-bot': true,
         'file-share': true,
         'admin-panel': true
       };
@@ -348,6 +352,7 @@ class GroupService {
       { id: 'chrome-bot', name: 'Chrome Bot', description: 'Use shared browser sessions' },
       { id: 'iptv-bot', name: 'IPTV Bot', description: 'Watch IPTV channels' },
       { id: 'spotify-bot', name: 'Spotify Bot', description: 'Listen to Spotify together' },
+      { id: 'emulator-bot', name: 'Emulator Bot', description: 'Play multiplayer emulator games (Xbox, Dreamcast, GameCube/Wii, PS3)' },
       { id: 'file-share', name: 'File Sharing', description: 'Share folders with other users' },
       { id: 'admin-panel', name: 'Admin Panel', description: 'Access admin settings' }
     ];
