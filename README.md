@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/public/logo192.png" alt="F7Lans Logo" width="150" height="150">
+  <img src="client/public/logo.svg" alt="F7Lans Logo" width="150" height="150">
 </p>
 
 <h1 align="center">

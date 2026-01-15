@@ -347,7 +347,7 @@ function renderLoginPage() {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-logo">
-          <div class="logo-icon">F7</div>
+          <img src="logo.svg" alt="F7Lans" class="logo-icon-img">
           <h1>F7Lans</h1>
           <p>Gaming Community Platform</p>
         </div>
@@ -377,7 +377,7 @@ function renderRegisterPage() {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-logo">
-          <div class="logo-icon">F7</div>
+          <img src="logo.svg" alt="F7Lans" class="logo-icon-img">
           <h1>F7Lans</h1>
           <p>Join the Gaming Community</p>
         </div>
@@ -1647,6 +1647,13 @@ function addStyles() {
       font-size: 32px;
       font-weight: 700;
       margin-bottom: 16px;
+    }
+
+    .logo-icon-img {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 16px;
+      filter: invert(1) drop-shadow(0 4px 20px var(--accent-glow));
     }
 
     .auth-logo h1 {
