@@ -78,6 +78,13 @@ body {
   box-shadow: 0 4px 20px var(--accent-glow);
 }
 
+.logo-icon-img {
+  width: 100px;
+  height: 100px;
+  margin-bottom: 16px;
+  filter: invert(1) drop-shadow(0 4px 20px var(--accent-glow));
+}
+
 .logo h1 {
   font-size: 28px;
   font-weight: 700;

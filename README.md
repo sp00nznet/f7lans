@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/public/logo192.png" alt="F7Lans Logo" width="150" height="150">
+  <img src="client/public/logo.svg" alt="F7Lans Logo" width="150" height="150">
 </p>
 
 <h1 align="center">
@@ -276,7 +276,7 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 | **Self-Hosted** | Yes | No | No |
 | **Voice Chat** | Unlimited | Unlimited | Unlimited |
 | **Video Chat** | Yes | Yes | Yes |
-| **Screen Share** | 1080p | 720p | 1080p |
+| **Screen Share** | Up to 8K 60fps | 720p 30fps | 1080p 60fps |
 | **Multiple Screens** | Yes | No | Yes |
 | **File Upload Limit** | Unlimited* | 25MB | 500MB |
 | **Custom Server Icon** | Yes | Yes | Yes |
