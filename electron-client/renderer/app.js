@@ -881,6 +881,24 @@ async function toggleCamera() {
   updateVoiceUI();
 }
 
+// Screen share quality presets (720p to 8K)
+const SCREEN_SHARE_QUALITY = {
+  '720p': { width: 1280, height: 720, frameRate: 30, label: '720p HD', description: 'Good for low bandwidth' },
+  '1080p': { width: 1920, height: 1080, frameRate: 30, label: '1080p Full HD', description: 'Standard quality (Recommended)' },
+  '1080p60': { width: 1920, height: 1080, frameRate: 60, label: '1080p 60fps', description: 'Smooth for gaming' },
+  '1440p': { width: 2560, height: 1440, frameRate: 30, label: '1440p QHD', description: 'High quality' },
+  '1440p60': { width: 2560, height: 1440, frameRate: 60, label: '1440p 60fps', description: 'High quality smooth' },
+  '4k': { width: 3840, height: 2160, frameRate: 30, label: '4K Ultra HD', description: 'Maximum clarity' },
+  '4k60': { width: 3840, height: 2160, frameRate: 60, label: '4K 60fps', description: 'Premium streaming' },
+  '8k': { width: 7680, height: 4320, frameRate: 30, label: '8K Ultra HD', description: 'Highest resolution available' },
+  'source': { width: null, height: null, frameRate: 60, label: 'Source', description: 'Native resolution' }
+};
+
+// Get current screen share quality preference
+function getScreenShareQuality() {
+  return state.settings?.screenShareQuality || '1080p';
+}
+
 async function toggleScreenShare() {
   // Always allow adding more screen shares - show picker
   if (window.electronAPI && window.electronAPI.getScreenSources) {
@@ -892,33 +910,108 @@ async function toggleScreenShare() {
       showToast('Could not get screen sources: ' + error.message, 'error');
     }
   } else {
-    // Fallback for web (browser) - use getDisplayMedia
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1920, height: 1080, frameRate: 30 },
-        audio: true
-      });
-      const shareId = 'screen-' + Date.now();
-      startScreenShare(stream, shareId);
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Screen share error:', error);
-        showToast('Could not share screen: ' + error.message, 'error');
-      }
+    // Fallback for web (browser) - use getDisplayMedia with quality selection
+    openWebScreenShareModal();
+  }
+}
+
+// Web browser screen share with quality selection
+async function openWebScreenShareModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+  const currentQuality = getScreenShareQuality();
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Share Your Screen</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Select streaming quality:</p>
+      <div class="quality-options" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
+        ${Object.entries(SCREEN_SHARE_QUALITY).map(([key, q]) => `
+          <div class="quality-option ${currentQuality === key ? 'selected' : ''}"
+               data-quality="${key}"
+               onclick="selectWebScreenShareQuality('${key}')"
+               style="padding: 12px; background: ${currentQuality === key ? 'var(--accent-primary)' : 'var(--bg-dark)'};
+                      border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.2s;
+                      border: 2px solid ${currentQuality === key ? 'var(--accent-primary)' : 'transparent'};">
+            <div style="font-weight: 600; color: var(--text-primary);">${q.label}</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${q.description}</div>
+          </div>
+        `).join('')}
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px;">Higher resolutions require more bandwidth and CPU.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="startWebScreenShare()">Start Sharing</button>
+    </div>
+  `;
+
+  // Add hover effect
+  const style = document.createElement('style');
+  style.textContent = `.quality-option:hover { background: var(--bg-medium) !important; }`;
+  modal.appendChild(style);
+
+  overlay.classList.add('active');
+}
+
+// Select quality for web screen share
+function selectWebScreenShareQuality(quality) {
+  document.querySelectorAll('.quality-option').forEach(el => {
+    const isSelected = el.dataset.quality === quality;
+    el.classList.toggle('selected', isSelected);
+    el.style.background = isSelected ? 'var(--accent-primary)' : 'var(--bg-dark)';
+    el.style.borderColor = isSelected ? 'var(--accent-primary)' : 'transparent';
+  });
+  state.settings.screenShareQuality = quality;
+}
+
+// Start web screen share with selected quality
+async function startWebScreenShare() {
+  const quality = getScreenShareQuality();
+  const preset = SCREEN_SHARE_QUALITY[quality] || SCREEN_SHARE_QUALITY['1080p'];
+
+  closeModal();
+
+  try {
+    const videoConstraints = preset.width ? {
+      width: { ideal: preset.width },
+      height: { ideal: preset.height },
+      frameRate: { ideal: preset.frameRate }
+    } : {
+      frameRate: { ideal: preset.frameRate }
+    };
+
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: videoConstraints,
+      audio: true
+    });
+    const shareId = 'screen-' + Date.now();
+    startScreenShare(stream, shareId);
+    showToast(`Screen sharing at ${preset.label}`, 'success');
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      console.error('Screen share error:', error);
+      showToast('Could not share screen: ' + error.message, 'error');
     }
   }
 }
 
-// Show screen picker modal for Electron
+// Show screen picker modal for Electron with quality selection
 function openScreenPickerModal(sources) {
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
+  const currentQuality = getScreenShareQuality();
 
   // Store sources globally so we can access thumbnails by index
   window._screenSources = sources;
+  window._selectedScreenQuality = currentQuality;
 
   const sourcesHtml = sources.map((source, index) => `
-    <div class="screen-source" onclick="selectScreenSource('${source.id}')"
+    <div class="screen-source" data-source-id="${source.id}"
+         onclick="selectScreenSourcePreview('${source.id}')"
          style="cursor: pointer; padding: 8px; border-radius: 8px; background: var(--bg-dark); text-align: center; transition: all 0.2s;">
       <div class="screen-thumbnail" data-index="${index}"
            style="width: 100%; height: 120px; border-radius: 4px; margin-bottom: 8px; border: 2px solid transparent; background: var(--bg-medium); display: flex; align-items: center; justify-content: center; overflow: hidden;">
@@ -930,14 +1023,39 @@ function openScreenPickerModal(sources) {
     </div>
   `).join('');
 
+  // Quality presets for quick selection
+  const quickQualities = ['720p', '1080p', '1080p60', '1440p', '4k', '4k60', '8k'];
+
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Share Your Screen</h2>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
-      <p style="color: var(--text-muted); margin-bottom: 16px;">Select a screen or window to share:</p>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div style="margin-bottom: 16px;">
+        <label style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 8px; display: block;">STREAMING QUALITY</label>
+        <div class="quality-selector" style="display: flex; flex-wrap: wrap; gap: 6px;">
+          ${quickQualities.map(key => {
+            const q = SCREEN_SHARE_QUALITY[key];
+            return `
+              <button class="quality-btn ${currentQuality === key ? 'active' : ''}"
+                      data-quality="${key}"
+                      onclick="setScreenShareQuality('${key}')"
+                      style="padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s;
+                             background: ${currentQuality === key ? 'var(--accent-primary)' : 'var(--bg-dark)'};
+                             color: var(--text-primary);">
+                ${q.label}
+              </button>
+            `;
+          }).join('')}
+        </div>
+        <p style="color: var(--text-muted); font-size: 11px; margin-top: 8px;">
+          ${SCREEN_SHARE_QUALITY[currentQuality]?.description || ''} • Higher quality uses more bandwidth
+        </p>
+      </div>
+
+      <label style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 8px; display: block;">SELECT SCREEN OR WINDOW</label>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;">
         ${sourcesHtml}
       </div>
     </div>
@@ -946,9 +1064,16 @@ function openScreenPickerModal(sources) {
     </div>
   `;
 
-  // Add hover effect
+  // Add hover effects
   const style = document.createElement('style');
-  style.textContent = `.screen-source:hover { background: var(--bg-medium) !important; } .screen-source:hover .screen-thumbnail { border-color: var(--accent-primary) !important; }`;
+  style.textContent = `
+    .screen-source:hover { background: var(--bg-medium) !important; }
+    .screen-source:hover .screen-thumbnail { border-color: var(--accent-primary) !important; }
+    .screen-source.selected { background: var(--bg-medium) !important; }
+    .screen-source.selected .screen-thumbnail { border-color: var(--accent-primary) !important; }
+    .quality-btn:hover { background: var(--bg-medium) !important; }
+    .quality-btn.active { background: var(--accent-primary) !important; }
+  `;
   modal.appendChild(style);
 
   overlay.classList.add('active');
@@ -975,23 +1100,73 @@ function openScreenPickerModal(sources) {
   }, 50);
 }
 
+// Set screen share quality from modal
+function setScreenShareQuality(quality) {
+  window._selectedScreenQuality = quality;
+  state.settings.screenShareQuality = quality;
+
+  // Update UI
+  document.querySelectorAll('.quality-btn').forEach(btn => {
+    const isActive = btn.dataset.quality === quality;
+    btn.classList.toggle('active', isActive);
+    btn.style.background = isActive ? 'var(--accent-primary)' : 'var(--bg-dark)';
+  });
+
+  // Update description
+  const descEl = document.querySelector('.quality-selector + p');
+  if (descEl) {
+    descEl.textContent = `${SCREEN_SHARE_QUALITY[quality]?.description || ''} • Higher quality uses more bandwidth`;
+  }
+
+  // Save setting
+  if (window.electronAPI) {
+    window.electronAPI.getSettings().then(settings => {
+      settings.screenShareQuality = quality;
+      window.electronAPI.saveSettings(settings);
+    });
+  }
+}
+
+// Preview selection for screen source (visual feedback before starting)
+function selectScreenSourcePreview(sourceId) {
+  // Actually start the share directly
+  selectScreenSource(sourceId);
+}
+
 // Select a screen source from the picker
 async function selectScreenSource(sourceId) {
   closeModal();
 
+  // Get selected quality
+  const quality = window._selectedScreenQuality || getScreenShareQuality();
+  const preset = SCREEN_SHARE_QUALITY[quality] || SCREEN_SHARE_QUALITY['1080p'];
+
   try {
     // Use the selected source with getUserMedia (Electron way)
+    // For source/native resolution, don't set max constraints
+    const videoConstraints = {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sourceId,
+        maxFrameRate: preset.frameRate
+      }
+    };
+
+    // Only set resolution constraints if not using 'source' quality
+    if (preset.width && preset.height) {
+      videoConstraints.mandatory.maxWidth = preset.width;
+      videoConstraints.mandatory.maxHeight = preset.height;
+      videoConstraints.mandatory.minWidth = Math.min(1280, preset.width);
+      videoConstraints.mandatory.minHeight = Math.min(720, preset.height);
+    } else {
+      // Source quality - use very high limits to get native resolution
+      videoConstraints.mandatory.maxWidth = 7680;
+      videoConstraints.mandatory.maxHeight = 4320;
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: sourceId,
-          maxWidth: 1920,
-          maxHeight: 1080,
-          maxFrameRate: 30
-        }
-      }
+      video: videoConstraints
     });
 
     // Generate unique share ID
@@ -1001,7 +1176,13 @@ async function selectScreenSource(sourceId) {
     const source = window._screenSources?.find(s => s.id === sourceId);
     const label = source?.name || 'Screen Share';
 
-    startScreenShare(stream, shareId, label);
+    // Get actual resolution from the stream
+    const videoTrack = stream.getVideoTracks()[0];
+    const settings = videoTrack?.getSettings();
+    const actualRes = settings ? `${settings.width}x${settings.height}` : preset.label;
+
+    startScreenShare(stream, shareId, `${label} (${actualRes})`);
+    showToast(`Screen sharing at ${preset.label}`, 'success');
   } catch (error) {
     console.error('Failed to start screen share:', error);
     showToast('Could not share screen: ' + error.message, 'error');
@@ -1407,6 +1588,25 @@ async function openSettings() {
       </div>
 
       <div class="settings-section">
+        <h3>Screen Sharing</h3>
+        <div class="settings-row">
+          <label>Default Quality</label>
+          <select id="screenShareQuality" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="720p" ${state.settings.screenShareQuality === '720p' ? 'selected' : ''}>720p HD (Low bandwidth)</option>
+            <option value="1080p" ${!state.settings.screenShareQuality || state.settings.screenShareQuality === '1080p' ? 'selected' : ''}>1080p Full HD (Recommended)</option>
+            <option value="1080p60" ${state.settings.screenShareQuality === '1080p60' ? 'selected' : ''}>1080p 60fps (Gaming)</option>
+            <option value="1440p" ${state.settings.screenShareQuality === '1440p' ? 'selected' : ''}>1440p QHD</option>
+            <option value="1440p60" ${state.settings.screenShareQuality === '1440p60' ? 'selected' : ''}>1440p 60fps</option>
+            <option value="4k" ${state.settings.screenShareQuality === '4k' ? 'selected' : ''}>4K Ultra HD</option>
+            <option value="4k60" ${state.settings.screenShareQuality === '4k60' ? 'selected' : ''}>4K 60fps (Premium)</option>
+            <option value="8k" ${state.settings.screenShareQuality === '8k' ? 'selected' : ''}>8K Ultra HD (Maximum)</option>
+            <option value="source" ${state.settings.screenShareQuality === 'source' ? 'selected' : ''}>Source (Native resolution)</option>
+          </select>
+        </div>
+        <p style="color: var(--text-muted); font-size: 11px; margin-top: 8px;">Higher resolutions require more bandwidth and CPU. 4K/8K recommended only with fast connections.</p>
+      </div>
+
+      <div class="settings-section">
         <h3>Behavior</h3>
         <div class="settings-row">
           <label>Minimize to Tray</label>
@@ -1578,6 +1778,8 @@ async function saveSettings() {
     outputVolume: parseInt(document.getElementById('outputVolume').value),
     voiceActivated: document.getElementById('voiceMode').value === 'vad',
     pushToTalkKey: document.getElementById('pttKey').value,
+    // Screen sharing settings
+    screenShareQuality: document.getElementById('screenShareQuality').value,
     // Behavior settings
     minimizeToTray: document.getElementById('minimizeToTray').checked,
     startMinimized: document.getElementById('startMinimized').checked
