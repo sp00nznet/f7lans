@@ -1104,6 +1104,19 @@
             gap: 16px;
         }
 
+        /* Chat Fullscreen Mode */
+        .main-content.chat-fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 1500;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .main-content.chat-fullscreen .channel-header {
+            background: var(--bg-dark);
+        }
+
         /* Notification Toast */
         .toast-container {
             position: fixed;
@@ -1358,6 +1371,7 @@
                     <button class="header-btn" title="Notifications">🔔</button>
                     <button class="header-btn" title="Pinned">📌</button>
                     <button class="header-btn" title="Members">👥</button>
+                    <button class="header-btn" id="chatFullscreenBtn" onclick="toggleChatFullscreen()" title="Fullscreen">⛶</button>
                 </div>
             </header>
             
@@ -2010,6 +2024,22 @@
             document.getElementById('fullscreenVideo').srcObject = null;
         }
 
+        // Toggle chat fullscreen
+        function toggleChatFullscreen() {
+            const mainContent = document.querySelector('.main-content');
+            const btn = document.getElementById('chatFullscreenBtn');
+            mainContent.classList.toggle('chat-fullscreen');
+
+            // Update button icon
+            if (mainContent.classList.contains('chat-fullscreen')) {
+                btn.textContent = '⛶';
+                btn.title = 'Exit Fullscreen';
+            } else {
+                btn.textContent = '⛶';
+                btn.title = 'Fullscreen';
+            }
+        }
+
         // Add participant
         function addParticipant(participant) {
             state.participants.push({
@@ -2124,10 +2154,16 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Escape to close modals
+            // Escape to close modals and exit fullscreen
             if (e.key === 'Escape') {
                 closeShareModal();
                 closeFullscreen();
+                // Exit chat fullscreen if active
+                const mainContent = document.querySelector('.main-content');
+                if (mainContent.classList.contains('chat-fullscreen')) {
+                    mainContent.classList.remove('chat-fullscreen');
+                    document.getElementById('chatFullscreenBtn').title = 'Fullscreen';
+                }
             }
             
             // Ctrl+Shift+M to toggle mute
