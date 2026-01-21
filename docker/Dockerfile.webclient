@@ -1,0 +1,26 @@
+# F7Lans Web Client Dockerfile
+FROM nginx:alpine
+
+# Copy nginx configuration template
+COPY docker/nginx-webclient.conf.template /etc/nginx/nginx.conf.template
+
+# Copy entrypoint script
+COPY docker/webclient-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Copy static files
+COPY client/public/ /usr/share/nginx/html/
+
+# Environment variables for API connection
+ENV API_HOST=f7lans-server
+ENV API_PORT=3001
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+# Start with entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
