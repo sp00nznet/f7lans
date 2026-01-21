@@ -82,15 +82,7 @@ const state = {
   // Pending attachments for current message
   pendingAttachments: [],
   // Modal navigation - track previous modal for back button
-  previousModal: null,
-  // Emulator multiplayer state
-  emulator: {
-    session: null,      // Current emulator session
-    isPlayer: false,    // Is current user a player
-    playerSlot: null,   // Player slot (0-3)
-    gamepadIndex: null, // Connected gamepad index
-    lastInputTime: 0    // For throttling input
-  }
+  previousModal: null
 };
 
 // Initialize application
@@ -364,60 +356,6 @@ function connectSocket() {
 
   state.socket.on('voice:currentUsers', (data) => {
     renderVoiceUsers(data.users);
-  });
-
-  // ===== Emulator Bot Event Handlers =====
-  state.socket.on('emulator:session-started', (data) => {
-    state.emulator.session = data;
-    showToast(`${data.displayName} session started`, 'success');
-    renderEmulatorPanel();
-  });
-
-  state.socket.on('emulator:session-ended', (data) => {
-    state.emulator.session = null;
-    state.emulator.isPlayer = false;
-    state.emulator.playerSlot = null;
-    showToast('Emulator session ended', 'info');
-    hideEmulatorPanel();
-  });
-
-  state.socket.on('emulator:player-joined', (data) => {
-    if (state.emulator.session) {
-      state.emulator.session.players = data.players;
-    }
-    if (data.userId === state.user?._id) {
-      state.emulator.isPlayer = true;
-      state.emulator.playerSlot = data.slot;
-      showToast(`You joined as Player ${data.slot + 1}`, 'success');
-      startGamepadPolling();
-    } else {
-      showToast(`Player ${data.slot + 1} joined`, 'info');
-    }
-    renderEmulatorPanel();
-  });
-
-  state.socket.on('emulator:player-left', (data) => {
-    if (state.emulator.session) {
-      state.emulator.session.players = data.players;
-    }
-    if (data.userId === state.user?._id) {
-      state.emulator.isPlayer = false;
-      state.emulator.playerSlot = null;
-      stopGamepadPolling();
-    }
-    renderEmulatorPanel();
-  });
-
-  state.socket.on('emulator:video-chunk', (data) => {
-    handleEmulatorVideoChunk(data);
-  });
-
-  state.socket.on('emulator:game-loaded', (data) => {
-    showToast(`Game loaded: ${data.gamePath}`, 'success');
-  });
-
-  state.socket.on('emulator:error', (data) => {
-    showToast(`Emulator error: ${data.message}`, 'error');
   });
 
   // ===== Game Together Event Handlers =====
@@ -1700,7 +1638,6 @@ async function openSettings() {
         </div>
         <h4 style="margin-top: 16px; color: var(--text-muted);">Gaming Bots</h4>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button class="btn-secondary" onclick="openAdminBotModal('emulator')">Emulator</button>
           <button class="btn-secondary" onclick="openAdminBotModal('rpg')">RPG Bot</button>
           <button class="btn-secondary" onclick="openAdminBotModal('starcitizen')">Star Citizen</button>
         </div>
@@ -4517,9 +4454,9 @@ function openBotsModal() {
       <div class="settings-section">
         <h3>Gaming</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px;">
-          <button class="bot-tile" onclick="state.previousModal = 'bots'; openEmulatorModal();">
+          <button class="bot-tile" onclick="state.previousModal = 'bots'; openGameTogetherFromBots();">
             <span style="font-size: 32px;">🎮</span>
-            <span>Emulator</span>
+            <span>Game Together</span>
           </button>
           <button class="bot-tile" onclick="openUserBotModal('rpg')">
             <span style="font-size: 32px;">⚔️</span>
@@ -4670,9 +4607,6 @@ function openAdminBotModal(botType) {
     case 'imagesearch':
       openImageSearchBotModal();
       break;
-    case 'emulator':
-      openEmulatorAdminModal();
-      break;
     case 'rpg':
       openRPGBotModal();
       break;
@@ -4685,183 +4619,6 @@ function openAdminBotModal(botType) {
     default:
       showToast('Bot admin panel not yet implemented', 'warning');
       openSettings();
-  }
-}
-
-// ==================== Emulator Admin Modal ====================
-async function openEmulatorAdminModal() {
-  const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modalContent');
-
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>Emulator Bot Configuration</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="emulatorAdminContent">Loading...</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal()">Back to Settings</button>
-    </div>
-  `;
-
-  overlay.classList.add('active');
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/status`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    renderEmulatorAdminContent(data);
-  } catch (error) {
-    document.getElementById('emulatorAdminContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
-  }
-}
-
-function renderEmulatorAdminContent(data) {
-  const { enabled, config, activeSessions } = data;
-
-  document.getElementById('emulatorAdminContent').innerHTML = `
-    <div class="settings-section" style="margin-bottom: 16px;">
-      <h3>Bot Status</h3>
-      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
-        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
-        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleEmulatorBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
-      </div>
-      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Allows users to play multiplayer emulator games (Xbox, Dreamcast, GameCube/Wii, PS3) together in voice channels.</p>
-    </div>
-
-    <div class="settings-section" style="margin-bottom: 16px;">
-      <h3>Emulator Paths</h3>
-      <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Configure the paths to each emulator executable on the server.</p>
-
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Xbox (xemu)</label>
-          <input type="text" id="xemuPath" value="${config?.xbox?.path || ''}" placeholder="/usr/bin/xemu or C:\\Program Files\\xemu\\xemu.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Dreamcast (flycast)</label>
-          <input type="text" id="flycastPath" value="${config?.dreamcast?.path || ''}" placeholder="/usr/bin/flycast or C:\\Program Files\\flycast\\flycast.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">GameCube/Wii (Dolphin)</label>
-          <input type="text" id="dolphinPath" value="${config?.gamecube?.path || ''}" placeholder="/usr/bin/dolphin-emu or C:\\Program Files\\Dolphin\\Dolphin.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">PlayStation 3 (RPCS3)</label>
-          <input type="text" id="rpcs3Path" value="${config?.ps3?.path || ''}" placeholder="/usr/bin/rpcs3 or C:\\Program Files\\RPCS3\\rpcs3.exe" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-      </div>
-    </div>
-
-    <div class="settings-section" style="margin-bottom: 16px;">
-      <h3>ROM/Game Folders</h3>
-      <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Configure folders where games are stored for each emulator.</p>
-
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Xbox Games Folder</label>
-          <input type="text" id="xboxRomsPath" value="${config?.xbox?.romsPath || ''}" placeholder="/games/xbox or D:\\Games\\Xbox" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Dreamcast Games Folder</label>
-          <input type="text" id="dreamcastRomsPath" value="${config?.dreamcast?.romsPath || ''}" placeholder="/games/dreamcast or D:\\Games\\Dreamcast" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">GameCube/Wii Games Folder</label>
-          <input type="text" id="gamecubeRomsPath" value="${config?.gamecube?.romsPath || ''}" placeholder="/games/gamecube or D:\\Games\\GameCube" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-        <div>
-          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">PS3 Games Folder</label>
-          <input type="text" id="ps3RomsPath" value="${config?.ps3?.romsPath || ''}" placeholder="/games/ps3 or D:\\Games\\PS3" style="width: 100%; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-      </div>
-
-      <button class="btn-primary" onclick="saveEmulatorConfig()" style="margin-top: 16px;">Save Configuration</button>
-    </div>
-
-    <div class="settings-section">
-      <h3>Active Sessions (${activeSessions?.length || 0})</h3>
-      <div style="margin-top: 12px;">
-        ${activeSessions?.length > 0 ? activeSessions.map(s => `
-          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
-            <div style="flex: 1;">
-              <div style="font-weight: 500;">${escapeHtml(s.emulatorType)} - ${escapeHtml(s.gameName || 'Unknown Game')}</div>
-              <div style="font-size: 12px; color: var(--text-muted);">${s.playerCount}/4 players • Started by ${escapeHtml(s.startedBy)}</div>
-            </div>
-            <button class="btn-danger" onclick="forceStopEmulatorSession('${s.channelId}')" style="padding: 6px 12px;">Force Stop</button>
-          </div>
-        `).join('') : '<p style="color: var(--text-muted);">No active emulator sessions</p>'}
-      </div>
-    </div>
-  `;
-}
-
-async function toggleEmulatorBot(enabled) {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ enabled })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    showToast(enabled ? 'Emulator bot enabled' : 'Emulator bot disabled', 'success');
-    openEmulatorAdminModal();
-  } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
-  }
-}
-
-async function saveEmulatorConfig() {
-  const config = {
-    xbox: {
-      path: document.getElementById('xemuPath').value.trim(),
-      romsPath: document.getElementById('xboxRomsPath').value.trim()
-    },
-    dreamcast: {
-      path: document.getElementById('flycastPath').value.trim(),
-      romsPath: document.getElementById('dreamcastRomsPath').value.trim()
-    },
-    gamecube: {
-      path: document.getElementById('dolphinPath').value.trim(),
-      romsPath: document.getElementById('gamecubeRomsPath').value.trim()
-    },
-    ps3: {
-      path: document.getElementById('rpcs3Path').value.trim(),
-      romsPath: document.getElementById('ps3RomsPath').value.trim()
-    }
-  };
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/configure`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ config })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    showToast('Emulator configuration saved', 'success');
-  } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
-  }
-}
-
-async function forceStopEmulatorSession(channelId) {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/force-stop`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ channelId })
-    });
-    if (!response.ok) throw new Error((await response.json()).error);
-    showToast('Session force stopped', 'success');
-    openEmulatorAdminModal();
-  } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
   }
 }
 
@@ -5756,194 +5513,232 @@ function openThemeSelector() {
   overlay.classList.add('active');
 }
 
-// ==================== Emulator Multiplayer Bot ====================
-// Supports: Xbox (xemu), Dreamcast (flycast), GameCube/Wii (dolphin), PS3 (rpcs3)
+// ==================== Game Together Functions ====================
 
-let gamepadPollingInterval = null;
-let emulatorVideoDecoder = null;
+// Game Together state
+state.gameTogether = {
+  active: false,
+  isHost: false,
+  hostUserId: null,
+  playerSlot: null,
+  gamepadIndex: null,
+  pollingInterval: null
+};
 
-// Get supported emulators from server
-async function getEmulatorStatus() {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/status`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to get emulator status:', error);
-    return null;
-  }
-}
-
-// Get available games for an emulator type
-async function getEmulatorGames(emulatorType) {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/games/${emulatorType}`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to get games:', error);
-    return { games: [] };
-  }
-}
-
-// Start emulator session
-async function startEmulatorSession(emulatorType, gamePath = null) {
+// Open Game Together from bots modal - shows the main Game Together info/start screen
+function openGameTogetherFromBots() {
   if (!state.inVoice) {
-    showToast('You must be in a voice channel to start an emulator session', 'error');
+    showToast('Join a voice channel first', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('modalContent');
+  const overlay = document.getElementById('modalOverlay');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>🎮 Game Together</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Play ANY local multiplayer game together with friends in your voice channel!</p>
+
+      <div style="background: var(--bg-dark); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px;">
+        <h3 style="margin-bottom: 12px;">How it works:</h3>
+        <ul style="text-align: left; color: var(--text-muted); line-height: 1.8; padding-left: 20px;">
+          <li>One person hosts the game on their PC</li>
+          <li>Host shares their screen in the voice channel</li>
+          <li>Other players join and their controllers get mapped to virtual controllers on the host's PC</li>
+          <li>Works with ANY game that supports local multiplayer!</li>
+        </ul>
+      </div>
+
+      <div style="background: var(--bg-dark); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px;">
+        <h3 style="margin-bottom: 12px;">Requirements:</h3>
+        <ul style="text-align: left; color: var(--text-muted); line-height: 1.8; padding-left: 20px;">
+          <li><strong>Host:</strong> Windows with ViGEmBus driver or Linux with uinput</li>
+          <li><strong>Players:</strong> Any gamepad/controller connected to their computer</li>
+        </ul>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button class="btn-primary" onclick="startGameTogetherAsHost()" style="flex: 1; max-width: 200px;">
+          🖥️ Host Game
+        </button>
+        <button class="btn-secondary" onclick="showGameTogetherJoinList()" style="flex: 1; max-width: 200px;">
+          👥 Join Game
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="${state.previousModal === 'bots' ? 'openBotsModal()' : 'closeModal()'}">Back</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+// Start Game Together as host
+async function startGameTogetherAsHost() {
+  if (!state.voiceChannel) {
+    showToast('Join a voice channel first', 'error');
     return;
   }
 
   try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/start`, {
+    showToast('Starting Game Together session...', 'info');
+
+    const response = await fetch(`${state.serverUrl}/api/game-together/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
-        channelId: state.voiceChannel._id,
-        emulatorType,
-        gamePath
+        channelId: state.voiceChannel._id
       })
     });
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
+    const data = await response.json();
 
-    showToast(`Starting ${result.displayName}...`, 'success');
-    return result;
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to start session');
+    }
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = true;
+    state.gameTogether.hostUserId = state.user._id;
+    state.gameTogether.playerSlot = 1;
+
+    closeModal();
+    showToast('🎮 Game Together session started! You are the host (Player 1). Share your screen!', 'success');
   } catch (error) {
-    showToast('Failed to start emulator: ' + error.message, 'error');
-    return null;
+    console.error('Failed to start Game Together session:', error);
+    showToast('Failed to start session: ' + error.message, 'error');
   }
 }
 
-// Stop emulator session
-async function stopEmulatorSession() {
-  if (!state.voiceChannel) return;
+// Show list of available Game Together sessions to join
+async function showGameTogetherJoinList() {
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>🎮 Join Game Together</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="gameTogetherSessionList" style="text-align: center;">
+        <div class="loading-spinner"></div>
+        <p style="color: var(--text-muted); margin-top: 12px;">Looking for sessions...</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="openGameTogetherFromBots()">Back</button>
+    </div>
+  `;
 
   try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/stop`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ channelId: state.voiceChannel._id })
+    const response = await fetch(`${state.serverUrl}/api/game-together/sessions`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
     });
+    const data = await response.json();
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-
-    showToast('Emulator session stopped', 'success');
-  } catch (error) {
-    showToast('Failed to stop emulator: ' + error.message, 'error');
-  }
-}
-
-// Join emulator session as player
-async function joinEmulatorAsPlayer(slot = null) {
-  if (!state.voiceChannel) return;
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ channelId: state.voiceChannel._id, slot })
-    });
-
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-
-    return result;
-  } catch (error) {
-    showToast('Failed to join: ' + error.message, 'error');
-    return null;
-  }
-}
-
-// Leave emulator session as player
-async function leaveEmulatorAsPlayer() {
-  if (!state.voiceChannel) return;
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/emulator-bot/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ channelId: state.voiceChannel._id })
-    });
-
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-
-    stopGamepadPolling();
-    return result;
-  } catch (error) {
-    showToast('Failed to leave: ' + error.message, 'error');
-    return null;
-  }
-}
-
-// Send controller input to server
-async function sendEmulatorInput(inputData) {
-  if (!state.voiceChannel || !state.emulator.isPlayer) return;
-
-  // Throttle input to max 60 updates per second
-  const now = Date.now();
-  if (now - state.emulator.lastInputTime < 16) return;
-  state.emulator.lastInputTime = now;
-
-  try {
-    // Use socket for low-latency input
-    if (state.socket) {
-      state.socket.emit('emulator:input', {
-        channelId: state.voiceChannel._id,
-        inputData
-      });
+    const listEl = document.getElementById('gameTogetherSessionList');
+    if (!data.sessions || data.sessions.length === 0) {
+      listEl.innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+          <div style="font-size: 48px; margin-bottom: 16px;">🎮</div>
+          <p>No active Game Together sessions found.</p>
+          <p style="font-size: 12px; margin-top: 8px;">Ask someone in voice to start hosting!</p>
+        </div>
+      `;
+    } else {
+      listEl.innerHTML = data.sessions.map(session => `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 500; color: var(--text-primary);">Hosted by ${escapeHtml(session.hostUsername)}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${session.playerCount}/4 players</div>
+          </div>
+          <button class="btn-primary" onclick="joinGameTogetherSession('${session.hostUserId}')" style="padding: 6px 12px;">Join</button>
+        </div>
+      `).join('');
     }
   } catch (error) {
-    console.error('Failed to send input:', error);
+    document.getElementById('gameTogetherSessionList').innerHTML = `
+      <p style="color: var(--danger);">Failed to load sessions: ${error.message}</p>
+    `;
   }
 }
 
-// Start polling gamepad for input
-function startGamepadPolling() {
-  if (gamepadPollingInterval) return;
+// Join a specific Game Together session
+async function joinGameTogetherSession(hostUserId) {
+  try {
+    showToast('Joining Game Together session...', 'info');
 
-  gamepadPollingInterval = setInterval(() => {
-    pollGamepad();
-  }, 16); // ~60Hz polling rate
+    const response = await fetch(`${state.serverUrl}/api/game-together/join`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        hostUserId,
+        channelId: state.voiceChannel._id
+      })
+    });
 
-  // Initial gamepad connection check
-  checkGamepadConnection();
-}
+    const data = await response.json();
 
-// Stop polling gamepad
-function stopGamepadPolling() {
-  if (gamepadPollingInterval) {
-    clearInterval(gamepadPollingInterval);
-    gamepadPollingInterval = null;
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to join session');
+    }
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = hostUserId;
+    state.gameTogether.playerSlot = data.playerSlot;
+
+    closeModal();
+    showToast(`🎮 Joined! You are Player ${data.playerSlot}. Connect your controller!`, 'success');
+
+    // Start gamepad polling for this player
+    startGameTogetherPolling();
+  } catch (error) {
+    console.error('Failed to join Game Together session:', error);
+    showToast('Failed to join: ' + error.message, 'error');
   }
 }
 
-// Check for gamepad connection
-function checkGamepadConnection() {
+// Start polling gamepad for Game Together
+function startGameTogetherPolling() {
+  if (state.gameTogether.pollingInterval) return;
+
+  // Find first connected gamepad
   const gamepads = navigator.getGamepads();
   for (let i = 0; i < gamepads.length; i++) {
     if (gamepads[i]) {
-      state.emulator.gamepadIndex = i;
+      state.gameTogether.gamepadIndex = i;
       showToast(`Controller connected: ${gamepads[i].id}`, 'success');
-      return;
+      break;
     }
   }
+
+  state.gameTogether.pollingInterval = setInterval(() => {
+    pollGameTogetherInput();
+  }, 16); // ~60Hz polling
 }
 
-// Poll gamepad for input
-function pollGamepad() {
-  if (!state.emulator.isPlayer) return;
+// Poll gamepad input for Game Together
+function pollGameTogetherInput() {
+  if (!state.gameTogether.active || state.gameTogether.isHost) return;
 
   const gamepads = navigator.getGamepads();
-  const gamepad = gamepads[state.emulator.gamepadIndex] || gamepads[0];
+  const gamepad = gamepads[state.gameTogether.gamepadIndex] || gamepads[0];
 
   if (!gamepad) return;
 
-  // Map standard gamepad to input data
+  // Map to Xbox 360 layout
   const inputData = {
     buttons: {
       A: gamepad.buttons[0]?.pressed || false,
@@ -5972,261 +5767,51 @@ function pollGamepad() {
     }
   };
 
-  sendEmulatorInput(inputData);
+  // Send via socket for low latency
+  if (state.socket) {
+    state.socket.emit('game-together:input', {
+      hostUserId: state.gameTogether.hostUserId,
+      playerSlot: state.gameTogether.playerSlot,
+      inputData
+    });
+  }
 }
 
-// Handle video chunk from emulator stream
-function handleEmulatorVideoChunk(data) {
-  // This would decode and display the video stream
-  // For now, we'll use a simple approach with data URLs
-  const videoContainer = document.getElementById('emulatorVideo');
-  if (!videoContainer) return;
-
-  // The actual implementation would use MSE (Media Source Extensions)
-  // or WebCodecs API for low-latency video decoding
+// Stop Game Together polling
+function stopGameTogetherPolling() {
+  if (state.gameTogether.pollingInterval) {
+    clearInterval(state.gameTogether.pollingInterval);
+    state.gameTogether.pollingInterval = null;
+  }
 }
 
-// Render emulator panel in voice panel
-function renderEmulatorPanel() {
-  const session = state.emulator.session;
-  if (!session) return;
+// Leave Game Together session
+async function leaveGameTogether() {
+  stopGameTogetherPolling();
 
-  const voicePanel = document.getElementById('voicePanel');
-  if (!voicePanel) return;
-
-  // Check if emulator section already exists
-  let emulatorSection = document.getElementById('emulatorSection');
-  if (!emulatorSection) {
-    emulatorSection = document.createElement('div');
-    emulatorSection.id = 'emulatorSection';
-    emulatorSection.className = 'emulator-section';
-
-    // Insert before voice actions
-    const voiceActions = voicePanel.querySelector('.voice-actions');
-    if (voiceActions) {
-      voicePanel.insertBefore(emulatorSection, voiceActions);
-    } else {
-      voicePanel.appendChild(emulatorSection);
+  if (state.gameTogether.active) {
+    try {
+      await fetch(`${state.serverUrl}/api/game-together/leave`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          hostUserId: state.gameTogether.hostUserId
+        })
+      });
+    } catch (e) {
+      console.error('Failed to leave Game Together:', e);
     }
   }
 
-  const players = session.players || [];
-  const maxPlayers = session.maxPlayers || 4;
-  const playerSlots = [];
-
-  for (let i = 0; i < maxPlayers; i++) {
-    const player = players.find(p => p.slot === i);
-    playerSlots.push({
-      slot: i,
-      player,
-      isEmpty: !player
-    });
-  }
-
-  emulatorSection.innerHTML = `
-    <div class="emulator-header" style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 12px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 24px;">🎮</span>
-          <div>
-            <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(session.displayName)}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">${players.length}/${maxPlayers} Players</div>
-          </div>
-        </div>
-        <button class="btn-danger" onclick="stopEmulatorSession()" style="padding: 4px 8px; font-size: 12px;">Stop</button>
-      </div>
-
-      <div style="background: var(--bg-medium); border-radius: var(--radius-sm); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
-        <div id="emulatorVideo" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-          <span style="color: var(--text-muted);">🎮 Emulator Stream</span>
-        </div>
-      </div>
-
-      <div class="player-slots" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
-        ${playerSlots.map(slot => `
-          <div class="player-slot ${slot.isEmpty ? 'empty' : 'filled'}" style="padding: 8px; background: var(--bg-medium); border-radius: var(--radius-sm); text-align: center; ${slot.player?.userId === state.user?._id ? 'border: 2px solid var(--accent-primary);' : ''}">
-            <div style="font-size: 18px; margin-bottom: 4px;">P${slot.slot + 1}</div>
-            ${slot.isEmpty ? `
-              <div style="color: var(--text-muted); font-size: 12px;">Empty</div>
-              ${!state.emulator.isPlayer ? `
-                <button class="btn-primary" onclick="joinEmulatorAsPlayer(${slot.slot})" style="margin-top: 4px; padding: 2px 8px; font-size: 11px;">Join</button>
-              ` : ''}
-            ` : `
-              <div style="color: var(--text-primary); font-size: 12px;">${slot.player?.userId === state.user?._id ? 'You' : 'Player'}</div>
-              ${slot.player?.userId === state.user?._id ? `
-                <button class="btn-secondary" onclick="leaveEmulatorAsPlayer()" style="margin-top: 4px; padding: 2px 8px; font-size: 11px;">Leave</button>
-              ` : ''}
-            `}
-          </div>
-        `).join('')}
-      </div>
-
-      ${state.emulator.isPlayer ? `
-        <div style="margin-top: 12px; padding: 8px; background: var(--success); background-opacity: 0.2; border-radius: var(--radius-sm); text-align: center;">
-          <div style="color: var(--success); font-size: 12px;">🎮 Controller Active - Player ${state.emulator.playerSlot + 1}</div>
-          <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">Your gamepad input is being sent</div>
-        </div>
-      ` : ''}
-    </div>
-  `;
+  state.gameTogether.active = false;
+  state.gameTogether.isHost = false;
+  state.gameTogether.hostUserId = null;
+  state.gameTogether.playerSlot = null;
+  showToast('Left Game Together session', 'info');
 }
-
-// Hide emulator panel
-function hideEmulatorPanel() {
-  const emulatorSection = document.getElementById('emulatorSection');
-  if (emulatorSection) {
-    emulatorSection.remove();
-  }
-}
-
-// Open emulator selection modal
-async function openEmulatorModal() {
-  if (!state.inVoice) {
-    showToast('Join a voice channel first to use emulators', 'error');
-    return;
-  }
-
-  const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modalContent');
-
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>🎮 Multiplayer Emulators</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <p style="color: var(--text-muted); margin-bottom: 16px;">Select an emulator to start a multiplayer gaming session. Up to 4 players can join!</p>
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-        <div class="emulator-option" onclick="selectEmulator('xbox')" style="padding: 16px; background: var(--bg-dark); border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.2s;">
-          <div style="font-size: 48px; margin-bottom: 8px;">🎮</div>
-          <div style="font-weight: 600; color: var(--text-primary);">Xbox</div>
-          <div style="font-size: 12px; color: var(--text-muted);">xemu emulator</div>
-          <div style="font-size: 11px; color: var(--accent-primary); margin-top: 4px;">4 Players</div>
-        </div>
-
-        <div class="emulator-option" onclick="selectEmulator('dreamcast')" style="padding: 16px; background: var(--bg-dark); border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.2s;">
-          <div style="font-size: 48px; margin-bottom: 8px;">🕹️</div>
-          <div style="font-weight: 600; color: var(--text-primary);">Dreamcast</div>
-          <div style="font-size: 12px; color: var(--text-muted);">flycast emulator</div>
-          <div style="font-size: 11px; color: var(--accent-primary); margin-top: 4px;">4 Players</div>
-        </div>
-
-        <div class="emulator-option" onclick="selectEmulator('gamecube')" style="padding: 16px; background: var(--bg-dark); border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.2s;">
-          <div style="font-size: 48px; margin-bottom: 8px;">🟣</div>
-          <div style="font-weight: 600; color: var(--text-primary);">GameCube/Wii</div>
-          <div style="font-size: 12px; color: var(--text-muted);">Dolphin emulator</div>
-          <div style="font-size: 11px; color: var(--accent-primary); margin-top: 4px;">4 Players</div>
-        </div>
-
-        <div class="emulator-option" onclick="selectEmulator('ps3')" style="padding: 16px; background: var(--bg-dark); border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.2s;">
-          <div style="font-size: 48px; margin-bottom: 8px;">🎵</div>
-          <div style="font-weight: 600; color: var(--text-primary);">PlayStation 3</div>
-          <div style="font-size: 12px; color: var(--text-muted);">RPCS3 emulator</div>
-          <div style="font-size: 11px; color: var(--accent-primary); margin-top: 4px;">4 Players</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>
-  `;
-
-  // Add hover effect
-  const style = document.createElement('style');
-  style.textContent = `.emulator-option:hover { background: var(--bg-medium) !important; transform: translateY(-2px); }`;
-  modal.appendChild(style);
-
-  overlay.classList.add('active');
-}
-
-// Select an emulator and show game selection
-async function selectEmulator(emulatorType) {
-  const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modalContent');
-
-  // Show loading state
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>Loading Games...</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body" style="text-align: center; padding: 40px;">
-      <div class="loading-spinner"></div>
-    </div>
-  `;
-
-  // Fetch available games
-  const gamesData = await getEmulatorGames(emulatorType);
-  const games = gamesData.games || [];
-
-  const emulatorNames = {
-    xbox: 'Xbox (xemu)',
-    dreamcast: 'Dreamcast (flycast)',
-    gamecube: 'GameCube/Wii (Dolphin)',
-    ps3: 'PlayStation 3 (RPCS3)'
-  };
-
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>🎮 ${emulatorNames[emulatorType] || emulatorType}</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
-      ${games.length > 0 ? `
-        <p style="color: var(--text-muted); margin-bottom: 16px;">Select a game to play:</p>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${games.map(game => `
-            <div class="game-item" onclick="startEmulatorWithGame('${emulatorType}', '${escapeHtml(game.path)}')" style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s;">
-              <span style="font-size: 24px;">📀</span>
-              <div>
-                <div style="font-weight: 500; color: var(--text-primary);">${escapeHtml(game.name)}</div>
-                <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(game.extension || '')}</div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      ` : `
-        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-          <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
-          <p>No games found for this emulator.</p>
-          <p style="font-size: 12px; margin-top: 8px;">Configure the ROM path in admin settings.</p>
-        </div>
-      `}
-
-      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--bg-light);">
-        <button class="btn-secondary" onclick="startEmulatorWithGame('${emulatorType}', null)" style="width: 100%;">
-          Start Without Game (Load from Emulator)
-        </button>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="openEmulatorModal()">← Back</button>
-    </div>
-  `;
-
-  // Add hover effect
-  const style = document.createElement('style');
-  style.textContent = `.game-item:hover { background: var(--bg-medium) !important; }`;
-  modal.appendChild(style);
-}
-
-// Start emulator with selected game
-async function startEmulatorWithGame(emulatorType, gamePath) {
-  closeModal();
-  await startEmulatorSession(emulatorType, gamePath);
-}
-
-// ==================== Game Together Functions ====================
-
-// Game Together state
-state.gameTogether = {
-  active: false,
-  isHost: false,
-  hostUserId: null,
-  playerSlot: null,
-  gamepadIndex: null,
-  pollingInterval: null
-};
 
 // Open Game Together menu
 function openGameTogetherMenu(hostUserId, hostLabel) {
@@ -6538,10 +6123,6 @@ async function sendGameTogetherInput(inputData) {
 // Gamepad connection event listeners
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Gamepad connected:', e.gamepad.id);
-  if (state.emulator?.isPlayer) {
-    state.emulator.gamepadIndex = e.gamepad.index;
-    showToast(`Controller connected: ${e.gamepad.id}`, 'success');
-  }
   if (state.gameTogether?.active && !state.gameTogether.isHost) {
     state.gameTogether.gamepadIndex = e.gamepad.index;
     showToast(`Controller connected: ${e.gamepad.id}`, 'success');
@@ -6550,10 +6131,6 @@ window.addEventListener('gamepadconnected', (e) => {
 
 window.addEventListener('gamepaddisconnected', (e) => {
   console.log('Gamepad disconnected:', e.gamepad.id);
-  if (state.emulator?.gamepadIndex === e.gamepad.index) {
-    state.emulator.gamepadIndex = null;
-    showToast('Controller disconnected', 'warning');
-  }
   if (state.gameTogether?.gamepadIndex === e.gamepad.index) {
     state.gameTogether.gamepadIndex = null;
     showToast('Controller disconnected', 'warning');
