@@ -74,19 +74,34 @@
 git clone https://github.com/yourusername/f7lans.git
 cd f7lans
 
-# Windows - just double-click:
-scripts/quickstart.bat
+# Linux/macOS
+./scripts/docker-start.sh
+
+# Windows
+scripts\quickstart.bat
 
 # Or run manually:
 docker-compose up -d
 ```
 
-### Manual Setup
+### Manual Setup (Debian 12)
 
 ```bash
-npm install
-cp .env.example .env
-npm start
+# One-click setup - installs Node.js, dependencies, everything
+./scripts/setup-debian.sh
+
+# Start the server
+./scripts/start-server.sh
+```
+
+### Manual Setup (Windows)
+
+```batch
+:: Run setup
+scripts\setup.bat
+
+:: Start the server
+scripts\start-server.bat
 ```
 
 **Open `http://localhost:3001`**
@@ -375,26 +390,49 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 
 ---
 
-## Building the Desktop Client
+## Build Scripts
 
-### Full Client (with embedded server)
+F7Lans includes one-click build scripts for all platforms:
 
-```bash
-# Windows
-scripts/build-electron.bat
+### Server & Setup
 
-# Linux
-cd electron-client && npm run build:linux
+| Script | Platform | Description |
+|:-------|:---------|:------------|
+| `scripts/setup-debian.sh` | Linux | Complete Debian 12 setup (Node.js, deps, env) |
+| `scripts/setup.bat` | Windows | Complete Windows setup |
+| `scripts/start-server.sh` | Linux | Start server directly |
+| `scripts/start-server.bat` | Windows | Start server directly |
+
+### Docker
+
+| Script | Platform | Description |
+|:-------|:---------|:------------|
+| `scripts/docker-build.sh` | Linux | Build Docker containers |
+| `scripts/docker-start.sh` | Linux | Start containers (auto-builds if needed) |
+| `scripts/docker-stop.sh` | Linux | Stop all containers |
+| `scripts/docker-build.bat` | Windows | Build Docker containers |
+| `scripts/docker-start.bat` | Windows | Start containers |
+| `scripts/docker-stop.bat` | Windows | Stop containers |
+| `scripts/build-webclient.sh` | Linux | Build containerized web client |
+
+### Desktop Client (Electron)
+
+| Script | Platform | Output |
+|:-------|:---------|:-------|
+| `scripts/build-electron.ps1` | Windows | One-click build (auto-installs Node.js via winget/choco) |
+| `scripts/build-electron.bat` | Windows | Build NSIS installer + portable exe |
+| `scripts/build-electron.sh` | Linux | Build AppImage + .deb package |
+
+**Windows (PowerShell - Recommended):**
+```powershell
+# One-click: installs Node.js if needed, builds everything
+powershell -ExecutionPolicy Bypass -File scripts\build-electron.ps1
 ```
 
-### Standalone Client (remote servers only)
-
+**Linux (Debian):**
 ```bash
-# Windows
-scripts/build-client-standalone.bat
-
-# Linux
-./scripts/build-client-standalone.sh
+# One-click: installs deps if needed, builds AppImage + .deb
+./scripts/build-electron.sh
 ```
 
 Installers are output to `electron-client/dist/`
