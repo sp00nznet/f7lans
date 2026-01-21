@@ -513,6 +513,19 @@ body {
   background: var(--bg-dark);
 }
 
+/* Chat Fullscreen Mode */
+.main-content.chat-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  width: 100vw;
+  height: 100vh;
+}
+
+.main-content.chat-fullscreen .channel-header {
+  background: var(--bg-dark);
+}
+
 .channel-header {
   height: 48px;
   padding: 0 16px;

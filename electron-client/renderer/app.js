@@ -476,6 +476,7 @@ function renderMainApp() {
         <div class="divider"></div>
         <span class="description" id="channelDescription"></span>
         <div class="header-actions">
+          <button class="header-btn" id="chatFullscreenBtn" onclick="toggleChatFullscreen()" title="Fullscreen">⛶</button>
           <button class="header-btn" onclick="showMembers()" title="Members">👥</button>
           <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
         </div>
@@ -796,6 +797,20 @@ function toggleDeafen() {
   }
 
   updateVoiceUI();
+}
+
+// Toggle chat fullscreen mode
+function toggleChatFullscreen() {
+  const mainContent = document.querySelector('.main-content');
+  const btn = document.getElementById('chatFullscreenBtn');
+  mainContent.classList.toggle('chat-fullscreen');
+
+  // Update button tooltip
+  if (mainContent.classList.contains('chat-fullscreen')) {
+    btn.title = 'Exit Fullscreen';
+  } else {
+    btn.title = 'Fullscreen';
+  }
 }
 
 async function toggleCamera() {
@@ -5683,6 +5698,27 @@ window.addEventListener('gamepaddisconnected', (e) => {
   if (state.gameTogether?.gamepadIndex === e.gamepad.index) {
     state.gameTogether.gamepadIndex = null;
     showToast('Controller disconnected', 'warning');
+  }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Escape to close modals and exit fullscreen
+  if (e.key === 'Escape') {
+    // Exit chat fullscreen if active
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent && mainContent.classList.contains('chat-fullscreen')) {
+      mainContent.classList.remove('chat-fullscreen');
+      const btn = document.getElementById('chatFullscreenBtn');
+      if (btn) btn.title = 'Fullscreen';
+      return;
+    }
+
+    // Close modal if open
+    const modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay && modalOverlay.classList.contains('active')) {
+      closeModalFull();
+    }
   }
 });
 
