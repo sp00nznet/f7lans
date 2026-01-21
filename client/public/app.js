@@ -28,8 +28,56 @@ const state = {
   peerConnections: new Map(),
   typingUsers: new Map(),
   unreadCounts: new Map(),
-  view: 'login' // login, register, app
+  view: 'login', // login, register, app
+  // Multi-server support
+  servers: JSON.parse(localStorage.getItem('f7lans_servers') || '[]'),
+  currentServerId: localStorage.getItem('f7lans_currentServer'),
+  serverUrl: null,
+  // Settings
+  settings: {
+    audioInput: 'default',
+    audioOutput: 'default',
+    videoInput: 'default',
+    inputVolume: 100,
+    outputVolume: 100,
+    voiceActivated: true,
+    screenShareQuality: '1080p',
+    enableSounds: true
+  },
+  devices: {
+    audioInputs: [],
+    audioOutputs: [],
+    videoInputs: []
+  },
+  // Emulator state
+  emulator: {
+    session: null,
+    isPlayer: false,
+    playerSlot: null,
+    gamepadIndex: null,
+    lastInputTime: 0,
+    pollingInterval: null
+  },
+  // Game Together state
+  gameTogether: {
+    active: false,
+    isHost: false,
+    hostUserId: null,
+    playerSlot: null,
+    gamepadIndex: null,
+    pollingInterval: null
+  },
+  // Previous modal for back navigation
+  previousModal: null
 };
+
+// Get current API URL (supports multi-server)
+function getApiUrl() {
+  if (state.serverUrl) {
+    return `${state.serverUrl}/api`;
+  }
+  return API_URL;
+}
 
 // ===== API Functions =====
 const api = {
@@ -43,7 +91,7 @@ const api = {
       headers['Authorization'] = `Bearer ${state.token}`;
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${getApiUrl()}${endpoint}`, {
       ...options,
       headers
     });
@@ -261,6 +309,96 @@ function setupSocketListeners() {
   socket.on('webrtc:ice-candidate', async (data) => {
     await handleIceCandidate(data.fromUserId, data.candidate);
   });
+
+  // ===== Emulator Bot Event Handlers =====
+  socket.on('emulator:session-started', (data) => {
+    state.emulator.session = data;
+    showToast(`${data.displayName} session started`, 'success');
+    renderEmulatorPanel();
+  });
+
+  socket.on('emulator:session-ended', (data) => {
+    state.emulator.session = null;
+    state.emulator.isPlayer = false;
+    state.emulator.playerSlot = null;
+    stopGamepadPolling();
+    showToast('Emulator session ended', 'info');
+    hideEmulatorPanel();
+  });
+
+  socket.on('emulator:player-joined', (data) => {
+    if (state.emulator.session) {
+      state.emulator.session.players = data.players;
+    }
+    if (data.userId === state.user?._id) {
+      state.emulator.isPlayer = true;
+      state.emulator.playerSlot = data.slot;
+      showToast(`You joined as Player ${data.slot + 1}`, 'success');
+      startGamepadPolling();
+    } else {
+      showToast(`Player ${data.slot + 1} joined`, 'info');
+    }
+    renderEmulatorPanel();
+  });
+
+  socket.on('emulator:player-left', (data) => {
+    if (state.emulator.session) {
+      state.emulator.session.players = data.players;
+    }
+    if (data.userId === state.user?._id) {
+      state.emulator.isPlayer = false;
+      state.emulator.playerSlot = null;
+      stopGamepadPolling();
+    }
+    renderEmulatorPanel();
+  });
+
+  socket.on('emulator:video-chunk', (data) => {
+    handleEmulatorVideoChunk(data);
+  });
+
+  socket.on('emulator:game-loaded', (data) => {
+    showToast(`Game loaded: ${data.gamePath}`, 'success');
+  });
+
+  socket.on('emulator:error', (data) => {
+    showToast(`Emulator error: ${data.message}`, 'error');
+  });
+
+  // ===== Game Together Event Handlers =====
+  socket.on('gameTogether:session-started', (data) => {
+    showToast(`Game Together session started by ${data.hostUsername}`, 'success');
+  });
+
+  socket.on('gameTogether:session-stopped', (data) => {
+    showToast('Game Together session ended', 'info');
+    if (state.gameTogether?.active) {
+      stopGameTogetherPolling();
+      state.gameTogether.active = false;
+      state.gameTogether.isHost = false;
+    }
+  });
+
+  socket.on('gameTogether:player-joined', (data) => {
+    showToast(`${data.username} joined as Player ${data.playerSlot}`, 'success');
+  });
+
+  socket.on('gameTogether:player-left', (data) => {
+    showToast(`Player ${data.playerSlot} left the session`, 'info');
+  });
+
+  // ===== Bot Event Handlers =====
+  socket.on('youtube:started', (data) => {
+    showToast(`Now playing: ${data.title}`, 'success');
+  });
+
+  socket.on('youtube:stopped', () => {
+    showToast('YouTube playback stopped', 'info');
+  });
+
+  socket.on('spotify:track-changed', (data) => {
+    showToast(`Now playing: ${data.name} - ${data.artist}`, 'info');
+  });
 }
 
 // ===== WebRTC Functions =====
@@ -415,11 +553,21 @@ function renderApp() {
     <div class="app-container ${state.inVoice ? 'voice-active' : ''}">
       <!-- Server List -->
       <nav class="server-list">
-        <div class="server-icon active" title="F7Lans Home">
-          <span>F7</span>
-        </div>
+        ${state.servers.map(server => `
+          <div class="server-icon ${server.id === state.currentServerId ? 'active' : ''}"
+               title="${escapeHtml(server.name)}"
+               onclick="switchServer('${server.id}')"
+               data-server-id="${server.id}">
+            ${server.icon || server.name.substring(0, 2).toUpperCase()}
+          </div>
+        `).join('')}
+        ${state.servers.length === 0 ? `
+          <div class="server-icon active" title="F7Lans Home">
+            <span>F7</span>
+          </div>
+        ` : ''}
         <div class="server-divider"></div>
-        <div class="server-icon add-server" title="Add Server" onclick="showToast('Coming soon!', 'info')">+</div>
+        <div class="server-icon add-server" title="Add Server" onclick="openAddServerModal()">+</div>
       </nav>
 
       <!-- Channel Sidebar -->
@@ -539,9 +687,13 @@ function renderApp() {
             <span class="icon">📷</span>
             <span class="label">Camera</span>
           </button>
-          <button class="action-btn ${state.isScreenSharing ? 'active' : ''}" onclick="toggleScreenShare()">
+          <button class="action-btn ${state.isScreenSharing ? 'active' : ''}" onclick="openScreenShareModal()">
             <span class="icon">📺</span>
             <span class="label">Share</span>
+          </button>
+          <button class="action-btn" onclick="openBotsModal()">
+            <span class="icon">🤖</span>
+            <span class="label">Bots</span>
           </button>
           <button class="action-btn danger" onclick="leaveVoice()">
             <span class="icon">📞</span>
@@ -1529,7 +1681,584 @@ async function updateUserRole(userId, role) {
 }
 
 function closeModal() {
+  // Check if we should return to a previous modal
+  if (state.previousModal) {
+    const returnTo = state.previousModal;
+    state.previousModal = null;
+    if (returnTo === 'settings') {
+      openSettings();
+    } else if (returnTo === 'bots') {
+      openBotsModal();
+    }
+    return;
+  }
   document.getElementById('modalOverlay').classList.remove('active');
+}
+
+function closeModalFull() {
+  state.previousModal = null;
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
+// ===== Multi-Server Functions =====
+function openAddServerModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Add Server</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Server Name</label>
+        <input type="text" id="addServerName" placeholder="My Server" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Server URL</label>
+        <input type="url" id="addServerUrl" placeholder="https://myserver.com:3001" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="addServerUsername" placeholder="Your username" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="addServerPassword" placeholder="Your password" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div id="addServerError" style="color: var(--danger); font-size: 13px; margin-top: 8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Cancel</button>
+      <button class="btn-primary" onclick="addServer()">Add Server</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function addServer() {
+  const name = document.getElementById('addServerName').value.trim();
+  const url = document.getElementById('addServerUrl').value.trim().replace(/\/$/, '');
+  const username = document.getElementById('addServerUsername').value.trim();
+  const password = document.getElementById('addServerPassword').value;
+  const errorEl = document.getElementById('addServerError');
+
+  if (!name || !url || !username || !password) {
+    errorEl.textContent = 'Please fill in all fields';
+    return;
+  }
+
+  try {
+    errorEl.textContent = 'Connecting...';
+
+    const response = await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Login failed');
+
+    const serverId = 'server_' + Date.now();
+    const newServer = {
+      id: serverId,
+      name,
+      url,
+      token: data.token,
+      user: data.user,
+      icon: name.substring(0, 2).toUpperCase()
+    };
+
+    state.servers.push(newServer);
+    localStorage.setItem('f7lans_servers', JSON.stringify(state.servers));
+
+    showToast(`Added server: ${name}`, 'success');
+    closeModalFull();
+
+    // Switch to new server
+    switchServer(serverId);
+  } catch (error) {
+    errorEl.textContent = error.message;
+  }
+}
+
+async function switchServer(serverId) {
+  const server = state.servers.find(s => s.id === serverId);
+  if (!server) return;
+
+  // Disconnect from current server
+  if (state.socket) {
+    state.socket.disconnect();
+    state.socket = null;
+  }
+
+  if (state.inVoice) {
+    leaveVoice();
+  }
+
+  // Switch to new server
+  state.currentServerId = serverId;
+  state.serverUrl = server.url;
+  state.token = server.token;
+  state.user = server.user;
+  state.channels = [];
+  state.messages = [];
+  state.currentChannel = null;
+
+  localStorage.setItem('f7lans_currentServer', serverId);
+
+  // Connect to new server
+  initSocket();
+  render();
+  showToast(`Switched to ${server.name}`, 'success');
+}
+
+function removeServer(serverId) {
+  if (!confirm('Remove this server?')) return;
+
+  state.servers = state.servers.filter(s => s.id !== serverId);
+  localStorage.setItem('f7lans_servers', JSON.stringify(state.servers));
+
+  if (state.currentServerId === serverId) {
+    if (state.servers.length > 0) {
+      switchServer(state.servers[0].id);
+    } else {
+      logout();
+    }
+  } else {
+    render();
+  }
+}
+
+// ===== Bots Modal =====
+function openBotsModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Channel Bots</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Select a bot to use in the current voice channel</p>
+
+      <div class="settings-section">
+        <h3>Media & Entertainment</h3>
+        <div class="bot-grid">
+          <button class="bot-tile" onclick="openYouTubeBotModal()">
+            <span class="bot-icon">🎬</span>
+            <span>YouTube</span>
+          </button>
+          <button class="bot-tile" onclick="openSpotifyBotModal()">
+            <span class="bot-icon">🎵</span>
+            <span>Spotify</span>
+          </button>
+          <button class="bot-tile" onclick="openTwitchBotModal()">
+            <span class="bot-icon">📺</span>
+            <span>Twitch</span>
+          </button>
+          <button class="bot-tile" onclick="openIPTVBotModal()">
+            <span class="bot-icon">📡</span>
+            <span>IPTV</span>
+          </button>
+          <button class="bot-tile" onclick="openPlexBotModal()">
+            <span class="bot-icon">🎞️</span>
+            <span>Plex</span>
+          </button>
+          <button class="bot-tile" onclick="openJellyfinBotModal()">
+            <span class="bot-icon">🎥</span>
+            <span>Jellyfin</span>
+          </button>
+          <button class="bot-tile" onclick="openEmbyBotModal()">
+            <span class="bot-icon">🎦</span>
+            <span>Emby</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Gaming</h3>
+        <div class="bot-grid">
+          <button class="bot-tile" onclick="state.previousModal='bots'; openEmulatorModal();">
+            <span class="bot-icon">🎮</span>
+            <span>Emulator</span>
+          </button>
+          <button class="bot-tile" onclick="openGameTogetherModal()">
+            <span class="bot-icon">🕹️</span>
+            <span>Game Together</span>
+          </button>
+          <button class="bot-tile" onclick="openRPGBotModal()">
+            <span class="bot-icon">⚔️</span>
+            <span>RPG Bot</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Tools & Utilities</h3>
+        <div class="bot-grid">
+          <button class="bot-tile" onclick="openChromeBotModal()">
+            <span class="bot-icon">🌐</span>
+            <span>Chrome</span>
+          </button>
+          <button class="bot-tile" onclick="openImageSearchModal()">
+            <span class="bot-icon">🖼️</span>
+            <span>Image Search</span>
+          </button>
+          <button class="bot-tile" onclick="openActivityStatsModal()">
+            <span class="bot-icon">📊</span>
+            <span>Activity Stats</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+// ===== YouTube Bot =====
+async function openYouTubeBotModal() {
+  state.previousModal = 'bots';
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>YouTube Bot</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>YouTube URL or Search</label>
+        <input type="text" id="youtubeInput" placeholder="Paste URL or search..." style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+      </div>
+      <div class="form-group">
+        <label>Channel</label>
+        <select id="youtubeChannel" style="width: 100%; padding: 10px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}" ${c._id === state.voiceChannel?._id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="playYouTube()">Play</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function playYouTube() {
+  const input = document.getElementById('youtubeInput').value.trim();
+  const channelId = document.getElementById('youtubeChannel').value;
+
+  if (!input) {
+    showToast('Please enter a URL or search term', 'warning');
+    return;
+  }
+
+  try {
+    const response = await api.request('/youtube-bot/play', {
+      method: 'POST',
+      body: JSON.stringify({ channelId, query: input })
+    });
+    showToast(`Now playing: ${response.title || 'Video'}`, 'success');
+    closeModalFull();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// Placeholder bot modals
+function openSpotifyBotModal() { state.previousModal = 'bots'; showToast('Spotify bot coming soon', 'info'); }
+function openTwitchBotModal() { state.previousModal = 'bots'; showToast('Twitch bot coming soon', 'info'); }
+function openIPTVBotModal() { state.previousModal = 'bots'; showToast('IPTV bot coming soon', 'info'); }
+function openPlexBotModal() { state.previousModal = 'bots'; showToast('Plex bot coming soon', 'info'); }
+function openJellyfinBotModal() { state.previousModal = 'bots'; showToast('Jellyfin bot coming soon', 'info'); }
+function openEmbyBotModal() { state.previousModal = 'bots'; showToast('Emby bot coming soon', 'info'); }
+function openRPGBotModal() { state.previousModal = 'bots'; showToast('RPG bot coming soon', 'info'); }
+function openChromeBotModal() { state.previousModal = 'bots'; showToast('Chrome bot coming soon', 'info'); }
+function openImageSearchModal() { state.previousModal = 'bots'; showToast('Image search coming soon', 'info'); }
+function openActivityStatsModal() { state.previousModal = 'bots'; showToast('Activity stats coming soon', 'info'); }
+function openGameTogetherModal() { state.previousModal = 'bots'; showToast('Game Together coming soon', 'info'); }
+
+// ===== Emulator Functions =====
+async function openEmulatorModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Emulator Multiplayer</h2>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Play classic games together! Select an emulator to start.</p>
+
+      <div class="bot-grid">
+        <button class="bot-tile" onclick="selectEmulator('xbox')">
+          <span class="bot-icon">🎮</span>
+          <span>Xbox (xemu)</span>
+        </button>
+        <button class="bot-tile" onclick="selectEmulator('dreamcast')">
+          <span class="bot-icon">💿</span>
+          <span>Dreamcast</span>
+        </button>
+        <button class="bot-tile" onclick="selectEmulator('gamecube')">
+          <span class="bot-icon">🟣</span>
+          <span>GameCube/Wii</span>
+        </button>
+        <button class="bot-tile" onclick="selectEmulator('ps3')">
+          <span class="bot-icon">🎯</span>
+          <span>PlayStation 3</span>
+        </button>
+      </div>
+
+      ${state.emulator.session ? `
+        <div class="settings-section" style="margin-top: 20px;">
+          <h3>Current Session</h3>
+          <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+            <div style="font-weight: 500;">${escapeHtml(state.emulator.session.emulatorType)}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${state.emulator.session.players?.length || 0}/4 players</div>
+          </div>
+          <button class="btn-danger" onclick="stopEmulatorSession()" style="margin-top: 12px;">Stop Session</button>
+        </div>
+      ` : ''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function selectEmulator(type) {
+  if (!state.voiceChannel) {
+    showToast('Join a voice channel first', 'warning');
+    return;
+  }
+
+  try {
+    const response = await api.request('/emulator-bot/games', {
+      method: 'POST',
+      body: JSON.stringify({ emulatorType: type })
+    });
+    renderGamePicker(type, response.games || []);
+  } catch (error) {
+    showToast('Failed to load games: ' + error.message, 'error');
+  }
+}
+
+function renderGamePicker(emulatorType, games) {
+  const modal = document.getElementById('modalContent');
+  const emulatorNames = { xbox: 'Xbox', dreamcast: 'Dreamcast', gamecube: 'GameCube/Wii', ps3: 'PlayStation 3' };
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>${emulatorNames[emulatorType]} Games</h2>
+      <button class="close-btn" onclick="openEmulatorModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+      ${games.length === 0 ? '<p style="color: var(--text-muted);">No games found. Ask an admin to configure the ROM paths.</p>' : ''}
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${games.map(game => `
+          <button class="game-item" onclick="startEmulatorGame('${emulatorType}', '${escapeHtml(game.path)}')">
+            <span class="game-name">${escapeHtml(game.name)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="openEmulatorModal()">Back</button>
+    </div>
+  `;
+}
+
+async function startEmulatorGame(emulatorType, gamePath) {
+  try {
+    await api.request('/emulator-bot/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        channelId: state.voiceChannel._id,
+        emulatorType,
+        gamePath
+      })
+    });
+    showToast('Starting emulator session...', 'success');
+    closeModalFull();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopEmulatorSession() {
+  try {
+    await api.request('/emulator-bot/stop', {
+      method: 'POST',
+      body: JSON.stringify({ channelId: state.voiceChannel?._id })
+    });
+    showToast('Session stopped', 'success');
+    openEmulatorModal();
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+function renderEmulatorPanel() {
+  // Update voice panel if emulator session is active
+  const videoGrid = document.getElementById('videoGrid');
+  if (videoGrid && state.emulator.session) {
+    // Add emulator video tile
+    let emulatorTile = document.getElementById('video-tile-emulator');
+    if (!emulatorTile) {
+      emulatorTile = document.createElement('div');
+      emulatorTile.className = 'video-tile';
+      emulatorTile.id = 'video-tile-emulator';
+      emulatorTile.innerHTML = `
+        <video id="video-emulator" autoplay playsinline></video>
+        <div class="video-label">Emulator - ${state.emulator.session.emulatorType}</div>
+        <div class="player-slots" id="emulatorPlayerSlots"></div>
+      `;
+      videoGrid.appendChild(emulatorTile);
+    }
+    renderEmulatorPlayerSlots();
+  }
+}
+
+function hideEmulatorPanel() {
+  const tile = document.getElementById('video-tile-emulator');
+  if (tile) tile.remove();
+}
+
+function renderEmulatorPlayerSlots() {
+  const container = document.getElementById('emulatorPlayerSlots');
+  if (!container || !state.emulator.session) return;
+
+  const players = state.emulator.session.players || [];
+  let html = '<div style="display: flex; gap: 8px; padding: 8px;">';
+
+  for (let i = 0; i < 4; i++) {
+    const player = players.find(p => p.slot === i);
+    if (player) {
+      html += `<div class="player-slot filled" title="${escapeHtml(player.username)}">P${i + 1}</div>`;
+    } else {
+      html += `<div class="player-slot empty" onclick="joinEmulatorSlot(${i})">P${i + 1}</div>`;
+    }
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function joinEmulatorSlot(slot) {
+  try {
+    state.socket.emit('emulator:join-player', {
+      channelId: state.voiceChannel?._id,
+      slot
+    });
+  } catch (error) {
+    showToast('Failed to join: ' + error.message, 'error');
+  }
+}
+
+// ===== Gamepad Polling =====
+function startGamepadPolling() {
+  if (state.emulator.pollingInterval) return;
+
+  state.emulator.pollingInterval = setInterval(() => {
+    const gamepads = navigator.getGamepads();
+    const gamepad = gamepads[state.emulator.gamepadIndex || 0];
+
+    if (gamepad && state.emulator.isPlayer && state.socket) {
+      const input = {
+        buttons: gamepad.buttons.map(b => b.pressed),
+        axes: gamepad.axes.map(a => Math.round(a * 32767))
+      };
+
+      state.socket.emit('emulator:input', {
+        channelId: state.voiceChannel?._id,
+        slot: state.emulator.playerSlot,
+        input
+      });
+    }
+  }, 16); // ~60fps
+}
+
+function stopGamepadPolling() {
+  if (state.emulator.pollingInterval) {
+    clearInterval(state.emulator.pollingInterval);
+    state.emulator.pollingInterval = null;
+  }
+}
+
+function stopGameTogetherPolling() {
+  if (state.gameTogether.pollingInterval) {
+    clearInterval(state.gameTogether.pollingInterval);
+    state.gameTogether.pollingInterval = null;
+  }
+}
+
+function handleEmulatorVideoChunk(data) {
+  // Handle video chunks from emulator - simplified for web
+  console.log('Received emulator video chunk');
+}
+
+// ===== Screen Share Quality Modal =====
+function openScreenShareModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  const qualities = [
+    { id: '720p', label: '720p (HD)', desc: '1280x720 @ 30fps' },
+    { id: '1080p', label: '1080p (Full HD)', desc: '1920x1080 @ 30fps' },
+    { id: '1080p60', label: '1080p 60fps', desc: '1920x1080 @ 60fps' },
+    { id: '1440p', label: '1440p (2K)', desc: '2560x1440 @ 30fps' },
+    { id: '4k', label: '4K (Ultra HD)', desc: '3840x2160 @ 30fps' },
+    { id: '4k60', label: '4K 60fps', desc: '3840x2160 @ 60fps' }
+  ];
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Screen Share</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <h3>Quality</h3>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+          ${qualities.map(q => `
+            <label class="quality-option ${state.settings.screenShareQuality === q.id ? 'selected' : ''}">
+              <input type="radio" name="screenQuality" value="${q.id}" ${state.settings.screenShareQuality === q.id ? 'checked' : ''} onchange="state.settings.screenShareQuality = '${q.id}'">
+              <div>
+                <div style="font-weight: 500;">${q.label}</div>
+                <div style="font-size: 12px; color: var(--text-muted);">${q.desc}</div>
+              </div>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Cancel</button>
+      <button class="btn-primary" onclick="startScreenShareWithQuality()">Start Sharing</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+async function startScreenShareWithQuality() {
+  closeModalFull();
+  await toggleScreenShare();
 }
 
 function toggleReaction(messageId, emoji) {
@@ -2233,6 +2962,105 @@ function addStyles() {
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .toast-icon { width: 20px; height: 20px; }
     .toast-message { font-size: 14px; }
+
+    /* Bot Grid & Tiles */
+    .bot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .bot-tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 12px;
+      background: var(--bg-medium);
+      border: 2px solid var(--bg-light);
+      border-radius: var(--radius-md);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .bot-tile:hover {
+      background: var(--bg-light);
+      border-color: var(--accent-primary);
+      color: var(--text-primary);
+      transform: translateY(-2px);
+    }
+    .bot-tile:active { transform: translateY(0); }
+    .bot-icon { font-size: 32px; }
+
+    /* Quality Options */
+    .quality-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-medium);
+      border: 2px solid var(--bg-light);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .quality-option:hover { border-color: var(--bg-lighter); }
+    .quality-option.selected, .quality-option:has(input:checked) {
+      border-color: var(--accent-primary);
+      background: rgba(255, 140, 0, 0.1);
+    }
+    .quality-option input { display: none; }
+
+    /* Game Items */
+    .game-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg-medium);
+      border: 2px solid var(--bg-light);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .game-item:hover {
+      border-color: var(--accent-primary);
+      background: var(--bg-light);
+    }
+
+    /* Player Slots */
+    .player-slots {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+    }
+    .player-slot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .player-slot.empty {
+      background: var(--bg-medium);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .player-slot.empty:hover { background: var(--accent-primary); color: #000; }
+    .player-slot.filled {
+      background: var(--success);
+      color: #000;
+    }
   `;
   document.head.appendChild(style);
 }
