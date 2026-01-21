@@ -20,6 +20,8 @@ Detailed overview of everything F7Lans can do.
 - [Gaming Integration](#gaming-integration)
 - [Media Bots](#media-bots)
 - [Emulator Bot](#emulator-bot)
+- [Game Together](#game-together)
+- [Per-Channel Bot Settings](#per-channel-bot-settings)
 - [Groups & Access Control](#groups--access-control)
 - [File Sharing](#file-sharing)
 - [Administration](#administration)
@@ -113,7 +115,7 @@ Face-to-face communication when voice isn't enough.
 
 ### Screen Sharing
 
-Share your gameplay, presentations, or applications.
+Share your gameplay, presentations, or applications — up to **8K resolution**.
 
 **Features:**
 - Share entire screen
@@ -121,7 +123,27 @@ Share your gameplay, presentations, or applications.
 - Share browser tab
 - Multiple simultaneous shares
 - Audio sharing (system audio)
-- Quality presets (720p, 1080p, source)
+- Quality presets up to 8K
+
+**Quality Options:**
+
+| Preset | Resolution | FPS | Best For |
+|:-------|:-----------|:---:|:---------|
+| 720p | 1280x720 | 30 | Low bandwidth |
+| 1080p | 1920x1080 | 30 | Standard streaming |
+| 1080p60 | 1920x1080 | 60 | Gaming |
+| 1440p | 2560x1440 | 30 | High quality |
+| 1440p60 | 2560x1440 | 60 | High quality gaming |
+| 4K | 3840x2160 | 30 | Ultra HD |
+| 4K60 | 3840x2160 | 60 | Ultra HD gaming |
+| 8K | 7680x4320 | 30 | Maximum quality |
+
+**Comparison vs Discord:**
+| | F7Lans | Discord Free | Discord Nitro |
+|:--|:------:|:------------:|:-------------:|
+| Max Resolution | 8K | 720p | 1080p |
+| Max FPS | 60 | 30 | 60 |
+| Multiple Shares | Yes | No | Yes |
 
 ### Direct Messages
 
@@ -463,37 +485,11 @@ Search and share images with safe search filtering.
 | medium | Moderate filtering |
 | off | No filtering (admin only) |
 
-### Star Citizen Bot
+### Star Citizen Bot (DEPRECATED)
 
-Helpful tips for Star Citizen players.
+> **Note:** The Star Citizen Bot has been removed from the client interfaces. Server-side code remains but is no longer accessible through the UI.
 
-**Admin Setup:**
-1. Go to Settings → Administration → Media Bots → Star Citizen
-2. Enable the bot
-3. Select channels to monitor
-
-**Features:**
-- Automatic tips when players are gaming
-- Category-specific hints
-- Location information
-- Server status checks
-
-**Commands:**
-| Command | Description |
-|---------|-------------|
-| `!sc [topic]` | Get a tip (topics: combat, mining, trading, exploration, ships, newPlayer) |
-| `!schelp` | Show available commands |
-| `!sclocation <place>` | Get info about a location |
-| `!scstatus` | Check server status |
-
-**Tip Categories:**
-- General gameplay
-- Combat and dogfighting
-- Mining operations
-- Trading and cargo
-- Exploration and caves
-- Ships and navigation
-- New player guidance
+This bot provided tips and information for Star Citizen players but has been deprecated in favor of focusing on core features.
 
 ### Emulator Bot
 
@@ -545,6 +541,163 @@ Players use their local Xbox controllers. Buttons are mapped to each platform:
 | Y | Y | Y | Triangle |
 | LB/RB | L/R | L/R | L1/R1 |
 | LT/RT | Analog | Analog | L2/R2 |
+
+---
+
+## Game Together
+
+**Universal controller emulation for playing ANY local multiplayer game remotely.**
+
+### Overview
+
+Game Together lets remote players join local multiplayer games by emulating virtual controllers on the host's PC. Unlike the Emulator Bot (which streams emulated games), Game Together works with **any game** that supports local multiplayer — Steam games, Epic games, native PC games, anything.
+
+### How It Works
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      GAME TOGETHER                              │
+├────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  HOST (Player 1)              REMOTE PLAYERS (P2-P4)           │
+│  ┌──────────────┐            ┌──────────────┐                  │
+│  │ Physical     │            │ Physical     │                  │
+│  │ Xbox         │            │ Xbox         │                  │
+│  │ Controller   │            │ Controller   │                  │
+│  └──────────────┘            └──────────────┘                  │
+│        │                            │                          │
+│        │                            │ Gamepad API              │
+│        │                            ▼                          │
+│        │                     ┌──────────────┐                  │
+│        │                     │ F7Lans       │                  │
+│        │                     │ Client       │                  │
+│        │                     │ (Web/Desktop)│                  │
+│        │                     └──────┬───────┘                  │
+│        │                            │ 60Hz input               │
+│        │                            ▼                          │
+│        │                     ┌──────────────┐                  │
+│        │                     │ F7Lans       │                  │
+│        │                     │ Server       │                  │
+│        │                     └──────┬───────┘                  │
+│        │                            │ WebSocket                │
+│        ▼                            ▼                          │
+│  ┌────────────────────────────────────────┐                    │
+│  │           HOST PC                       │                    │
+│  │  ┌──────────────┐  ┌──────────────┐   │                    │
+│  │  │ Physical P1  │  │ Virtual P2-4 │   │                    │
+│  │  │ Controller   │  │ (ViGEmBus)   │   │                    │
+│  │  └──────────────┘  └──────────────┘   │                    │
+│  │           │               │            │                    │
+│  │           └───────┬───────┘            │                    │
+│  │                   ▼                    │                    │
+│  │           ┌──────────────┐             │                    │
+│  │           │  ANY GAME    │             │                    │
+│  │           │ Local Co-op  │             │                    │
+│  │           └──────────────┘             │                    │
+│  └────────────────────────────────────────┘                    │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Platform Requirements
+
+**Host PC (the one running the game):**
+
+| Platform | Driver Required | Notes |
+|:---------|:----------------|:------|
+| Windows | [ViGEmBus](https://github.com/ViGEm/ViGEmBus) | Creates virtual Xbox 360 controllers |
+| Linux | uinput | Kernel module, may need permissions config |
+| macOS | Not supported | Use Parsec as alternative |
+
+**Remote Players:**
+- Any F7Lans client (Desktop or Web)
+- Xbox controller (or any XInput-compatible gamepad)
+- Works in browsers via the Web Gamepad API
+
+### Starting a Session
+
+**As Host:**
+1. Install ViGEmBus driver (Windows)
+2. Join a voice channel in F7Lans
+3. Click "Bots" → "Game Together"
+4. Click "Start Hosting"
+5. Launch your local multiplayer game
+6. Host uses their physical controller as Player 1
+
+**As Remote Player:**
+1. Connect your Xbox controller
+2. Join the same voice channel
+3. Click "Bots" → "Game Together"
+4. Click "Join Session"
+5. Wait for host to assign you a player slot (P2-P4)
+6. Your controller inputs now control a virtual controller on the host's PC
+
+### Controller Mapping
+
+Standard Xbox 360 layout:
+
+| Control | Description |
+|:--------|:------------|
+| A, B, X, Y | Face buttons |
+| LB, RB | Bumpers |
+| LT, RT | Analog triggers |
+| Left Stick | Movement (with L3 click) |
+| Right Stick | Camera (with R3 click) |
+| D-Pad | Directional input |
+| Start, Back | Menu buttons |
+| Guide | Xbox button |
+
+### Web Gamepad API
+
+The Web Gamepad API is a standard browser API that allows web pages to read controller input:
+
+```javascript
+// Check for connected gamepads
+const gamepads = navigator.getGamepads();
+const gamepad = gamepads[0];
+
+// Read input at 60Hz
+if (gamepad) {
+  const buttons = gamepad.buttons;
+  const axes = gamepad.axes;
+  // Send to server via WebSocket
+}
+```
+
+**Browser Support:**
+- Chrome: Full support
+- Firefox: Full support
+- Edge: Full support
+- Safari: Partial support
+
+### Input Latency
+
+Typical latency breakdown:
+- Controller input: ~5ms
+- Network round-trip: 10-40ms (varies)
+- Virtual controller injection: ~5ms
+- **Total: 20-50ms typical**
+
+This is playable for most games. Fast-paced competitive games may notice latency.
+
+### Supported Games
+
+Game Together works with **any game** that supports local multiplayer controllers:
+- Rocket League (local co-op)
+- Gang Beasts
+- Overcooked
+- Cuphead
+- FIFA/sports games
+- Fighting games
+- Racing games
+- And thousands more...
+
+### Tips
+
+1. **Test your controller** in the browser's gamepad tester before playing
+2. **Use wired controllers** for lowest latency
+3. **Host should have good upload bandwidth** for responsive input
+4. **Configure game for local co-op** before remote players join
 
 ---
 

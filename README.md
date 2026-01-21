@@ -57,7 +57,7 @@
 │   │ Locally │         │ MongoDB │        │ Nitro   │                │
 │   └─────────┘         └─────────┘        └─────────┘                │
 │                                                                      │
-│   13 Built-in Bots • 4 Emulators • Federation • File Sharing        │
+│   12 Built-in Bots • Game Together • 8K Streaming • Federation      │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -165,7 +165,7 @@ Default login: `admin` / `admin123` (change this immediately!)
 
 ## Media Bots
 
-F7Lans includes **13 built-in bots** — all free, no subscriptions required:
+F7Lans includes **12 built-in bots** plus **Game Together** — all free, no subscriptions required:
 
 ### Streaming Bots
 
@@ -187,13 +187,13 @@ F7Lans includes **13 built-in bots** — all free, no subscriptions required:
 | **Image Search** | Google image search with NSFW filtering |
 | **Activity Stats** | Server-wide gaming leaderboards |
 | **RPG** | Tabletop text adventures (6 classes, 5 settings) |
-| **Star Citizen** | Tips, location info, server status |
 
-### Emulator Bot (NEW!)
+### Gaming Bots
 
 | Bot | Description |
 |:----|:------------|
-| **Emulator** | Play retro games together with 4 players! |
+| **Emulator** | Play retro games together with 4 players (Xbox, Dreamcast, GameCube, PS3) |
+| **Game Together** | Virtual controllers for ANY local multiplayer game |
 
 [Full bot documentation →](docs/BOTS.md)
 
@@ -291,7 +291,7 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 | **Self-Hosted** | Yes | No | No |
 | **Voice Chat** | Unlimited | Unlimited | Unlimited |
 | **Video Chat** | Yes | Yes | Yes |
-| **Screen Share** | Up to 8K 60fps | 720p 30fps | 1080p 60fps |
+| **Screen Share** | Up to 8K@30 / 4K@60 | 720p 30fps | 1080p 60fps |
 | **Multiple Screens** | Yes | No | Yes |
 | **File Upload Limit** | Unlimited* | 25MB | 500MB |
 | **Custom Server Icon** | Yes | Yes | Yes |
