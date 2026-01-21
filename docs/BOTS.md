@@ -9,7 +9,7 @@
 ╚═╝        ╚═╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
 ```
 
-Complete documentation for all 13 built-in bots.
+Complete documentation for all 12 built-in bots.
 
 ---
 
@@ -29,7 +29,6 @@ Complete documentation for all 13 built-in bots.
   - [Image Search Bot](#image-search-bot)
   - [Activity Stats Bot](#activity-stats-bot)
   - [RPG Bot](#rpg-bot)
-  - [Star Citizen Bot](#star-citizen-bot)
 - [Emulator Bot](#emulator-bot)
 - [Per-Channel Bot Settings](#per-channel-bot-settings)
 - [Permissions](#permissions)
@@ -38,14 +37,14 @@ Complete documentation for all 13 built-in bots.
 
 ## Overview
 
-F7Lans includes 13 built-in bots that extend your server's functionality:
+F7Lans includes 12 built-in bots that extend your server's functionality:
 
 | Category | Bots | Count |
 |:---------|:-----|:-----:|
 | **Streaming** | YouTube, Plex, Emby, Jellyfin, IPTV, Spotify, Twitch | 7 |
-| **Utility** | Chrome, Image Search, Activity Stats, RPG, Star Citizen | 5 |
+| **Utility** | Chrome, Image Search, Activity Stats, RPG | 4 |
 | **Gaming** | Emulator (Xbox, Dreamcast, GameCube, PS3) | 1 |
-| **Total** | | **13** |
+| **Total** | | **12** |
 
 ### How Bots Work
 
@@ -360,41 +359,6 @@ Human, Elf, Dwarf, Halfling, Orc, Dragonborn
 
 ---
 
-### Star Citizen Bot
-
-Tips and information for Star Citizen players.
-
-**Admin Setup:**
-1. Go to **Settings** → **Administration** → **Media Bots** → **Star Citizen**
-2. Enable the bot
-3. Select channels to monitor for SC players
-
-**Features:**
-- Automatic tips when players are gaming
-- Category-specific hints
-- Location information
-- Server status checks
-
-**Commands:**
-
-| Command | Description |
-|:--------|:------------|
-| `!sc [topic]` | Get a tip (combat, mining, trading, exploration, ships, newPlayer) |
-| `!schelp` | Show available commands |
-| `!sclocation <place>` | Get info about a location |
-| `!scstatus` | Check RSI server status |
-
-**Tip Categories:**
-- General gameplay
-- Combat and dogfighting
-- Mining operations
-- Trading and cargo
-- Exploration and caves
-- Ships and navigation
-- New player guidance
-
----
-
 ## Emulator Bot
 
 **Play classic console games together with up to 4 players!**
@@ -535,7 +499,6 @@ Bot access is controlled through the Groups & Permissions system.
 | `image-bot` | Image Search |
 | `activity-bot` | Activity Stats |
 | `rpg-bot` | RPG |
-| `sc-bot` | Star Citizen |
 | `emulator-bot` | Emulator |
 
 ### Granting Permissions

@@ -195,7 +195,7 @@ F7Lans includes **12 built-in bots** plus **Game Together** — all free, no sub
 | **Emulator** | Play retro games together with 4 players (Xbox, Dreamcast, GameCube, PS3) |
 | **Game Together** | Virtual controllers for ANY local multiplayer game |
 
-[Full bot documentation →](docs/BOTS.md)
+[Full bot documentation →](docs/BOTS.md) (12 bots)
 
 ---
 
@@ -346,7 +346,7 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 |:---------|:------------|
 | [Installation Guide](docs/INSTALLATION.md) | Docker, manual, and production setup |
 | [Features Guide](docs/FEATURES.md) | Complete feature documentation |
-| [Bots Guide](docs/BOTS.md) | All 13 bots with setup instructions |
+| [Bots Guide](docs/BOTS.md) | All 12 bots with setup instructions |
 | [Federation Guide](docs/FEDERATION.md) | Multi-server networking |
 | [API Reference](docs/API.md) | REST & WebSocket endpoints |
 | [Architecture](docs/ARCHITECTURE.md) | System design & components |

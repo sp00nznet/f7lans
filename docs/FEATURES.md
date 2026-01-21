@@ -771,7 +771,6 @@ Groups are collections of users with shared permissions. Users can belong to mul
 | `spotify-bot` | Use Spotify bot |
 | `twitch-bot` | Use Twitch bot |
 | `image-bot` | Use Image Search bot |
-| `sc-bot` | Use Star Citizen bot |
 | `activity-bot` | Use Activity Stats bot |
 | `rpg-bot` | Use RPG bot |
 | `emulator-bot` | Use Emulator bot (Xbox, Dreamcast, GameCube, PS3) |

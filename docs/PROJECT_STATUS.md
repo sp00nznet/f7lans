@@ -452,7 +452,7 @@ f7lans/
 
 ### Future Improvements
 
-- [ ] Add federation UI to web client
+- [x] Add federation UI to web client
 - [ ] Mobile app full implementation
 - [ ] Remove Star Citizen bot from server (if desired)
 - [ ] OAuth providers (Discord, Google)
