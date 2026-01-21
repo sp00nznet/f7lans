@@ -167,7 +167,7 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | Groups & Permissions | ✅ | ✅ | Role-based access control |
 | Server Branding | ✅ | ✅ | Custom icon and name |
 | Invite System | ✅ | ✅ | Email invites with limits |
-| Federation | ✅ | ❌ | Multi-server networking |
+| Federation | ✅ | ✅ | Multi-server networking |
 
 ### Security Features
 
@@ -442,12 +442,6 @@ f7lans/
 ---
 
 ## Known Issues / TODO
-
-### Missing Features in Web Client
-
-| Feature | Status | Notes |
-|:--------|:------:|:------|
-| Federation UI | ❌ | Needs admin panel for federation management |
 
 ### Server Cleanup Needed
 

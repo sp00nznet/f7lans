@@ -1446,6 +1446,7 @@ function openSettings() {
           <button class="btn-secondary" onclick="openInviteModal()">Create Invite</button>
           <button class="btn-secondary" onclick="openCreateUserModal()">Create User</button>
           <button class="btn-secondary" onclick="openAdminPanel()">Manage Users</button>
+          <button class="btn-secondary" onclick="openFederationModal()">Federation</button>
         </div>
       </div>
       ` : ''}
@@ -1803,6 +1804,242 @@ function removeServer(serverId) {
     }
   } else {
     render();
+  }
+}
+
+// ===== Federation Modal =====
+async function openFederationModal() {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Federation</h2>
+      <button class="close-btn" onclick="closeModalFull()">×</button>
+    </div>
+    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+      <div id="federationContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModalFull()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    renderFederationContent(data);
+  } catch (error) {
+    document.getElementById('federationContent').innerHTML = `
+      <p style="color: var(--danger);">Failed to load federation status: ${error.message}</p>
+    `;
+  }
+}
+
+function renderFederationContent(data) {
+  const { enabled, serverId, serverName, servers, pendingRequests } = data;
+
+  document.getElementById('federationContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>This Server</h3>
+      <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-top: 12px;">
+        <div style="font-weight: 600;">${escapeHtml(serverName || 'F7Lans Server')}</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+          ID: ${serverId || 'Unknown'}<br>
+          Federation: ${enabled ? '<span style="color: var(--success);">Enabled</span>' : '<span style="color: var(--danger);">Disabled</span>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Join Federation</h3>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <label style="min-width: 100px;">Server URL:</label>
+          <input type="text" id="federationTargetUrl" placeholder="https://other-server.com" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" onclick="analyzeFederation()">Analyze</button>
+          <button class="btn-primary" onclick="initiateFederation()">Connect</button>
+        </div>
+        <div id="federationAnalysis" style="display: none; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);"></div>
+      </div>
+    </div>
+
+    ${pendingRequests && pendingRequests.length > 0 ? `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Pending Requests (${pendingRequests.length})</h3>
+      <div style="margin-top: 12px;">
+        ${pendingRequests.map(req => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(req.fromServer?.name || 'Unknown Server')}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(req.fromServer?.url || '')}
+              </div>
+            </div>
+            <button class="btn-primary" onclick="approveFederationRequest('${req._id}')" style="padding: 6px 12px;">Approve</button>
+            <button class="btn-danger" onclick="rejectFederationRequest('${req._id}')" style="padding: 6px 12px;">Reject</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="settings-section">
+      <h3>Connected Servers (${servers?.filter(s => s.status === 'active').length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${servers && servers.length > 0 ? servers.map(server => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: ${server.status === 'active' ? 'var(--success)' : 'var(--danger)'};"></div>
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">${escapeHtml(server.name)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">
+                ${escapeHtml(server.url)} • ${server.status}
+              </div>
+            </div>
+            <button class="btn-danger" onclick="removeFederatedServer('${server.serverId}')" style="padding: 6px 12px;">Remove</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No federated servers</p>'}
+      </div>
+    </div>
+  `;
+}
+
+async function analyzeFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  const analysisDiv = document.getElementById('federationAnalysis');
+  analysisDiv.style.display = 'block';
+  analysisDiv.innerHTML = 'Analyzing...';
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    analysisDiv.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 8px;">Server: ${escapeHtml(data.targetServer?.name || 'Unknown')}</div>
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+        Users: ${data.targetServer?.stats?.userCount || 0} •
+        Channels: ${data.targetServer?.stats?.channelCount || 0}
+      </div>
+      ${data.hasConflicts ? `
+        <div style="color: var(--warning); font-size: 12px;">
+          ${data.conflicts.length} channel name conflict(s) detected
+        </div>
+      ` : `
+        <div style="color: var(--success); font-size: 12px;">No conflicts detected</div>
+      `}
+    `;
+  } catch (error) {
+    analysisDiv.innerHTML = `<span style="color: var(--danger);">Analysis failed: ${error.message}</span>`;
+  }
+}
+
+async function initiateFederation() {
+  const targetUrl = document.getElementById('federationTargetUrl').value.trim();
+  if (!targetUrl) {
+    showToast('Please enter a server URL', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/initiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ targetUrl })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast(result.message || 'Federation request sent!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Federation failed: ' + error.message, 'error');
+  }
+}
+
+async function approveFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation approved!', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to approve: ' + error.message, 'error');
+  }
+}
+
+async function rejectFederationRequest(requestId) {
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/requests/${requestId}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ reason: 'Rejected by admin' })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Federation request rejected', 'info');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to reject: ' + error.message, 'error');
+  }
+}
+
+async function removeFederatedServer(serverId) {
+  if (!confirm('Are you sure you want to remove this federated server?')) return;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/federation/servers/${serverId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+
+    showToast('Server removed from federation', 'success');
+    openFederationModal();
+  } catch (error) {
+    showToast('Failed to remove server: ' + error.message, 'error');
   }
 }
 
