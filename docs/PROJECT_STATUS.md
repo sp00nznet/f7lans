@@ -34,7 +34,7 @@ F7Lans is a self-hosted gaming community platform with multiple client options a
 │   │  Full Features   │      │     │  • Authentication (JWT)          │  │
 │   └──────────────────┘      │     │  • Real-time messaging           │  │
 │                             │     │  • WebRTC signaling              │  │
-│   ┌──────────────────┐      │     │  • 12 Bot services               │  │
+│   ┌──────────────────┐      │     │  • 11 Bot services               │  │
 │   │   Web Client     │──────┼────▶│  • Game Together (controllers)   │  │
 │   │  (Containerized) │      │     │  • File sharing                  │  │
 │   │  Full Features   │      │     │  • Federation                    │  │
@@ -145,7 +145,6 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | Image Search | ✅ | ✅ | Google images with NSFW filter |
 | Activity Stats | ✅ | ✅ | Gaming leaderboards |
 | RPG | ✅ | ✅ | Tabletop text adventures |
-| Emulator | ✅ | ✅ | Retro game streaming (4 players) |
 
 ### Gaming Features
 
@@ -201,7 +200,7 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | JWT Auth | ✅ | Token authentication |
 | File Uploads | ✅ | Avatars, attachments |
 
-### Bot Services (12 Total)
+### Bot Services (11 Total)
 
 | Service | Status | File |
 |:--------|:------:|:-----|
@@ -216,7 +215,6 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | Image Search Bot | ✅ | `server/services/imageSearchBotService.js` |
 | Activity Stats Bot | ✅ | `server/services/activityStatsBotService.js` |
 | RPG Bot | ✅ | `server/services/rpgBotService.js` |
-| Emulator Bot | ✅ | `server/services/emulatorBotService.js` |
 
 ### Server-Side Features
 
@@ -392,7 +390,7 @@ f7lans/
 │   ├── config/                # Database, federation config
 │   ├── controllers/           # API controllers (20+)
 │   ├── models/                # MongoDB schemas (9)
-│   ├── services/              # Bot services (12)
+│   ├── services/              # Bot services (11)
 │   ├── socket/                # WebSocket handlers
 │   ├── routes/                # Express routes
 │   ├── middleware/            # Auth middleware

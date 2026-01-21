@@ -15,14 +15,14 @@
 
 <p align="center">
   <strong>The Self-Hosted Gaming Community Platform</strong><br>
-  <sub>Voice, Video, Streaming, Emulators, Media Bots, File Sharing, Federation — All in One</sub>
+  <sub>Voice, Video, Streaming, Media Bots, Federation — All in One</sub>
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-feature-overview">Features</a> •
   <a href="#-media-bots">Bots</a> •
-  <a href="#-emulator-multiplayer">Emulators</a> •
+  <a href="#-federation">Federation</a> •
   <a href="#-comparison">Compare</a> •
   <a href="#-documentation">Docs</a>
 </p>
@@ -57,7 +57,7 @@
 │   │ Locally │         │ MongoDB │        │ Nitro   │                │
 │   └─────────┘         └─────────┘        └─────────┘                │
 │                                                                      │
-│   12 Built-in Bots • Game Together • 8K Streaming • Federation      │
+│   11 Built-in Bots • Game Together • 8K Streaming • Federation      │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -165,7 +165,7 @@ Default login: `admin` / `admin123` (change this immediately!)
 
 ## Media Bots
 
-F7Lans includes **12 built-in bots** plus **Game Together** — all free, no subscriptions required:
+F7Lans includes **11 built-in bots** plus **Game Together** — all free, no subscriptions required:
 
 ### Streaming Bots
 
@@ -192,65 +192,9 @@ F7Lans includes **12 built-in bots** plus **Game Together** — all free, no sub
 
 | Bot | Description |
 |:----|:------------|
-| **Emulator** | Play retro games together with 4 players (Xbox, Dreamcast, GameCube, PS3) |
 | **Game Together** | Virtual controllers for ANY local multiplayer game |
 
-[Full bot documentation →](docs/BOTS.md) (12 bots)
-
----
-
-## Emulator Multiplayer
-
-**Play classic console games together in voice chat!**
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│                    EMULATOR MULTIPLAYER                        │
-├────────────────────────────────────────────────────────────────┤
-│                                                                │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
-│   │   XBOX   │  │DREAMCAST │  │ GAMECUBE │  │   PS3    │     │
-│   │  (xemu)  │  │(flycast) │  │(Dolphin) │  │ (RPCS3)  │     │
-│   │ 4 Players│  │ 4 Players│  │ 4 Players│  │ 4 Players│     │
-│   └──────────┘  └──────────┘  └──────────┘  └──────────┘     │
-│                                                                │
-│   [P1: You]  [P2: @friend]  [P3: Empty]  [P4: Empty]         │
-│                                                                │
-│   Video streams to voice channel                               │
-│   Controller input via Xbox gamepad on your PC                 │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### Supported Emulators
-
-| Console | Emulator | Players | ROM Formats |
-|:--------|:---------|:-------:|:------------|
-| **Xbox** | [xemu](https://xemu.app/) | 4 | .iso, .xiso |
-| **Dreamcast** | [flycast](https://flycast.github.io/) | 4 | .gdi, .cdi, .chd |
-| **GameCube/Wii** | [Dolphin](https://dolphin-emu.org/) | 4 | .iso, .gcm, .wbfs, .rvz |
-| **PlayStation 3** | [RPCS3](https://rpcs3.net/) | 4 | .pkg, EBOOT.BIN |
-
-### How It Works
-
-1. **Join a voice channel** and click the Emulator button
-2. **Select an emulator** and choose a game from your ROM library
-3. **Video streams** to everyone in the voice channel via FFmpeg
-4. **Up to 4 players** can join by clicking on player slots
-5. **Use your Xbox controller** — input is sent at 60Hz over WebSocket
-
-### Controller Support
-
-Players use their local Xbox controllers (or any XInput-compatible gamepad):
-
-| Xbox Button | Dreamcast | GameCube | PS3 |
-|:------------|:----------|:---------|:----|
-| A | A | A | Cross |
-| B | B | B | Circle |
-| X | X | X | Square |
-| Y | Y | Y | Triangle |
-| LB/RB | L/R | L/R | L1/R1 |
-| LT/RT | Analog | Analog | L2/R2 |
+[Full bot documentation →](docs/BOTS.md)
 
 ---
 
@@ -300,8 +244,6 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 | **IPTV (Live TV)** | Built-in | No | No |
 | **Spotify Bot** | Built-in | No | No |
 | **Shared Browser** | Built-in | No | No |
-| **Emulator (4-player)** | Built-in | No | No |
-| **P2P File Sharing** | Built-in | No | No |
 | **RPG Bot** | Built-in | No | No |
 | **Federation** | Yes | No | No |
 | **Steam Integration** | OAuth | Limited | Limited |
@@ -318,9 +260,7 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 |:------------|:----------------|
 | Privacy | Your data stays on YOUR server |
 | Media streaming | 7 streaming bots built-in |
-| Retro gaming | 4 emulators with multiplayer |
 | Live TV | IPTV with EPG guide |
-| File sharing | P2P folder sharing |
 | Multiple servers | Federation support |
 | No monthly fees | Everything free, forever |
 
@@ -346,7 +286,7 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 |:---------|:------------|
 | [Installation Guide](docs/INSTALLATION.md) | Docker, manual, and production setup |
 | [Features Guide](docs/FEATURES.md) | Complete feature documentation |
-| [Bots Guide](docs/BOTS.md) | All 12 bots with setup instructions |
+| [Bots Guide](docs/BOTS.md) | All 11 bots with setup instructions |
 | [Federation Guide](docs/FEDERATION.md) | Multi-server networking |
 | [API Reference](docs/API.md) | REST & WebSocket endpoints |
 | [Architecture](docs/ARCHITECTURE.md) | System design & components |
@@ -369,17 +309,6 @@ Players use their local Xbox controllers (or any XInput-compatible gamepad):
 2. Create groups (e.g., "Trusted Members", "Music Lovers")
 3. Set permissions for each group
 4. Add users to groups
-
-### Enabling Emulators
-
-1. Install emulators on your server:
-   - [xemu](https://xemu.app/) (Xbox)
-   - [flycast](https://flycast.github.io/) (Dreamcast)
-   - [Dolphin](https://dolphin-emu.org/) (GameCube/Wii)
-   - [RPCS3](https://rpcs3.net/) (PS3)
-2. Configure ROM paths in admin settings
-3. Enable the Emulator Bot
-4. Users can start sessions from voice channels
 
 ### Enabling Federation
 
@@ -444,7 +373,7 @@ Installers are output to `electron-client/dist/`
 ```
 f7lans/
 ├── server/                 # Node.js backend
-│   ├── services/           # Bot services (13 bots)
+│   ├── services/           # Bot services
 │   ├── controllers/        # API controllers
 │   ├── models/             # MongoDB schemas
 │   ├── socket/             # WebSocket handlers
@@ -453,7 +382,6 @@ f7lans/
 ├── electron-client/        # Desktop client (Electron)
 │   ├── main.js             # Electron main process
 │   └── renderer/           # UI code
-├── mobile/                 # Mobile app (Capacitor)
 ├── docs/                   # Documentation
 └── scripts/                # Build scripts
 ```

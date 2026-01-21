@@ -9,7 +9,7 @@
 ╚═╝        ╚═╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
 ```
 
-Complete documentation for all 12 built-in bots.
+Complete documentation for all 11 built-in bots.
 
 ---
 
@@ -29,7 +29,6 @@ Complete documentation for all 12 built-in bots.
   - [Image Search Bot](#image-search-bot)
   - [Activity Stats Bot](#activity-stats-bot)
   - [RPG Bot](#rpg-bot)
-- [Emulator Bot](#emulator-bot)
 - [Per-Channel Bot Settings](#per-channel-bot-settings)
 - [Permissions](#permissions)
 
@@ -37,14 +36,13 @@ Complete documentation for all 12 built-in bots.
 
 ## Overview
 
-F7Lans includes 12 built-in bots that extend your server's functionality:
+F7Lans includes 11 built-in bots that extend your server's functionality:
 
 | Category | Bots | Count |
 |:---------|:-----|:-----:|
 | **Streaming** | YouTube, Plex, Emby, Jellyfin, IPTV, Spotify, Twitch | 7 |
 | **Utility** | Chrome, Image Search, Activity Stats, RPG | 4 |
-| **Gaming** | Emulator (Xbox, Dreamcast, GameCube, PS3) | 1 |
-| **Total** | | **12** |
+| **Total** | | **11** |
 
 ### How Bots Work
 
@@ -359,97 +357,6 @@ Human, Elf, Dwarf, Halfling, Orc, Dragonborn
 
 ---
 
-## Emulator Bot
-
-**Play classic console games together with up to 4 players!**
-
-The Emulator Bot lets users start multiplayer gaming sessions for retro consoles. Video streams to voice channels and players use their local Xbox controllers.
-
-### Supported Emulators
-
-| Console | Emulator | Players | ROM Formats | Website |
-|:--------|:---------|:-------:|:------------|:--------|
-| **Xbox** | xemu | 4 | .iso, .xiso | [xemu.app](https://xemu.app/) |
-| **Dreamcast** | flycast | 4 | .gdi, .cdi, .chd, .cue | [flycast.github.io](https://flycast.github.io/) |
-| **GameCube/Wii** | Dolphin | 4 | .iso, .gcm, .wbfs, .rvz | [dolphin-emu.org](https://dolphin-emu.org/) |
-| **PlayStation 3** | RPCS3 | 4 | .pkg, EBOOT.BIN | [rpcs3.net](https://rpcs3.net/) |
-
-### Admin Setup
-
-1. **Install emulators** on your server:
-   ```bash
-   # Linux example
-   sudo apt install dolphin-emu
-   # Or download from official websites
-   ```
-
-2. **Configure paths** in admin settings:
-   - Go to **Settings** → **Administration** → **Media Bots** → **Emulator**
-   - Set emulator executable paths
-   - Set ROM folder paths for each platform
-
-3. **Enable the bot** and grant permissions
-
-### User Guide
-
-**Starting a Session:**
-1. Join a voice channel
-2. Click the **Emulator** button in voice controls
-3. Select an emulator (Xbox, Dreamcast, GameCube, PS3)
-4. Choose a game from the ROM browser
-5. Session starts — video streams to everyone in voice
-
-**Joining as a Player:**
-1. See the emulator panel in voice
-2. Click **Join** on an empty player slot (P1-P4)
-3. Your Xbox controller input is now being sent
-4. Play the game!
-
-**Controller Requirements:**
-- Xbox controller or any XInput-compatible gamepad
-- Connected to YOUR PC (not the server)
-- Gamepad API supported by browser/Electron
-
-### Controller Mapping
-
-The bot maps Xbox controller buttons to each platform:
-
-| Xbox | Dreamcast | GameCube | PS3 |
-|:-----|:----------|:---------|:----|
-| A | A | A | Cross (X) |
-| B | B | B | Circle (O) |
-| X | X | X | Square |
-| Y | Y | Y | Triangle |
-| LB | L | L | L1 |
-| RB | R | R | R1 |
-| LT | Analog | Analog | L2 |
-| RT | Analog | Analog | R2 |
-| Back | — | Z | Select |
-| Start | Start | Start | Start |
-| Guide | — | — | PS Button |
-
-### Technical Details
-
-**Video Streaming:**
-- FFmpeg captures emulator window
-- Encodes to H.264 with ultra-low latency settings
-- Streams via WebSocket to voice channel
-
-**Input:**
-- Gamepad API polls controllers at 60Hz
-- Input sent via WebSocket to server
-- Server forwards to emulator process
-
-**Quality Presets:**
-
-| Preset | Bitrate | Resolution |
-|:-------|:--------|:-----------|
-| Low | 1.5 Mbps | 1280x720 |
-| Medium | 3 Mbps | 1280x720 |
-| High | 6 Mbps | 1280x720 |
-
----
-
 ## Per-Channel Bot Settings
 
 Control which bots are available in each channel.
@@ -472,7 +379,7 @@ Control which bots are available in each channel.
 
 | Channel Type | Recommended Bots |
 |:-------------|:-----------------|
-| Gaming | Activity Stats, RPG, Emulator |
+| Gaming | Activity Stats, RPG |
 | Music | Spotify |
 | Movies | YouTube, Plex, Emby, Jellyfin |
 | Watch Party | YouTube, Twitch |
@@ -499,7 +406,6 @@ Bot access is controlled through the Groups & Permissions system.
 | `image-bot` | Image Search |
 | `activity-bot` | Activity Stats |
 | `rpg-bot` | RPG |
-| `emulator-bot` | Emulator |
 
 ### Granting Permissions
 
@@ -540,16 +446,8 @@ Common patterns:
 ### Streaming Issues
 
 1. Verify server has sufficient bandwidth
-2. Check emulator/media server is accessible
+2. Check media server is accessible
 3. Try lower quality preset
-4. Check FFmpeg is installed (for Emulator bot)
-
-### Controller Not Working (Emulator)
-
-1. Verify gamepad is connected to YOUR PC
-2. Check browser supports Gamepad API
-3. Press a button to "wake" the controller
-4. Try reconnecting the controller
 
 ---
 

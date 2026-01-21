@@ -19,7 +19,6 @@ Detailed overview of everything F7Lans can do.
 - [User System](#user-system)
 - [Gaming Integration](#gaming-integration)
 - [Media Bots](#media-bots)
-- [Emulator Bot](#emulator-bot)
 - [Game Together](#game-together)
 - [Per-Channel Bot Settings](#per-channel-bot-settings)
 - [Groups & Access Control](#groups--access-control)
@@ -491,57 +490,6 @@ Search and share images with safe search filtering.
 
 This bot provided tips and information for Star Citizen players but has been deprecated in favor of focusing on core features.
 
-### Emulator Bot
-
-Play classic console games together with up to 4 players in voice channels.
-
-**Supported Emulators:**
-
-| Console | Emulator | Max Players |
-|---------|----------|-------------|
-| Xbox | [xemu](https://xemu.app/) | 4 |
-| Dreamcast | [flycast](https://flycast.github.io/) | 4 |
-| GameCube/Wii | [Dolphin](https://dolphin-emu.org/) | 4 |
-| PlayStation 3 | [RPCS3](https://rpcs3.net/) | 4 |
-
-**Admin Setup:**
-1. Install emulators on your server
-2. Go to Settings → Administration → Media Bots → Emulator
-3. Configure emulator executable paths
-4. Configure ROM folder paths
-5. Enable the bot
-
-**How It Works:**
-1. User joins a voice channel
-2. Clicks "Emulator" button in voice controls
-3. Selects an emulator and game
-4. Video streams to all voice channel members
-5. Up to 4 users can join as players
-6. Players use Xbox controllers on their PCs
-7. Controller input is sent at 60Hz via WebSocket
-
-**Features:**
-- Video streaming via FFmpeg
-- 4-player multiplayer sessions
-- Xbox controller support (or any XInput gamepad)
-- Game ROM browser
-- Player slot management
-- Save/load state support
-- Pause/resume control
-
-**Controller Mapping:**
-
-Players use their local Xbox controllers. Buttons are mapped to each platform:
-
-| Xbox | Dreamcast | GameCube | PS3 |
-|------|-----------|----------|-----|
-| A | A | A | Cross |
-| B | B | B | Circle |
-| X | X | X | Square |
-| Y | Y | Y | Triangle |
-| LB/RB | L/R | L/R | L1/R1 |
-| LT/RT | Analog | Analog | L2/R2 |
-
 ---
 
 ## Game Together
@@ -550,7 +498,7 @@ Players use their local Xbox controllers. Buttons are mapped to each platform:
 
 ### Overview
 
-Game Together lets remote players join local multiplayer games by emulating virtual controllers on the host's PC. Unlike the Emulator Bot (which streams emulated games), Game Together works with **any game** that supports local multiplayer — Steam games, Epic games, native PC games, anything.
+Game Together lets remote players join local multiplayer games by emulating virtual controllers on the host's PC. It works with **any game** that supports local multiplayer — Steam games, Epic games, native PC games, anything.
 
 ### How It Works
 
@@ -773,7 +721,6 @@ Groups are collections of users with shared permissions. Users can belong to mul
 | `image-bot` | Use Image Search bot |
 | `activity-bot` | Use Activity Stats bot |
 | `rpg-bot` | Use RPG bot |
-| `emulator-bot` | Use Emulator bot (Xbox, Dreamcast, GameCube, PS3) |
 | `file-share` | Share and access shared files |
 | `admin-panel` | Access admin settings |
 
