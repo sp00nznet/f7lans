@@ -28,7 +28,7 @@ const attachmentController = require('../controllers/attachmentController');
 const twitchBotController = require('../controllers/twitchBotController');
 const imageSearchBotController = require('../controllers/imageSearchBotController');
 const starCitizenBotController = require('../controllers/starCitizenBotController');
-const emulatorBotController = require('../controllers/emulatorBotController');
+const gameTogetherController = require('../controllers/gameTogetherController');
 
 const router = express.Router();
 
@@ -269,26 +269,15 @@ router.get('/admin/sc-bot/players/:channelId', authenticate, starCitizenBotContr
 router.put('/admin/sc-bot/channel/:channelId', authenticate, adminOnly, starCitizenBotController.updateChannelSettings);
 router.post('/admin/sc-bot/track-activity', authenticate, starCitizenBotController.trackActivity);
 
-// ===== Emulator Bot Routes (Xbox, Dreamcast, GameCube/Wii, PS3) =====
-router.get('/admin/emulator-bot/status', authenticate, adminOnly, emulatorBotController.getStatus);
-router.post('/admin/emulator-bot/enable', authenticate, adminOnly, emulatorBotController.setEnabled);
-router.post('/admin/emulator-bot/configure', authenticate, adminOnly, emulatorBotController.configure);
-router.get('/admin/emulator-bot/emulators', authenticate, emulatorBotController.getSupportedEmulators);
-router.get('/admin/emulator-bot/check/:emulatorType', authenticate, emulatorBotController.checkEmulator);
-router.get('/admin/emulator-bot/games/:emulatorType', authenticate, emulatorBotController.getGames);
-router.get('/admin/emulator-bot/controller-mapping', authenticate, emulatorBotController.getControllerMapping);
-router.post('/admin/emulator-bot/start', authenticate, emulatorBotController.startSession);
-router.post('/admin/emulator-bot/stop', authenticate, emulatorBotController.stopSession);
-router.post('/admin/emulator-bot/force-stop', authenticate, adminOnly, emulatorBotController.stopSession);
-router.get('/admin/emulator-bot/session/:channelId', authenticate, emulatorBotController.getSession);
-router.post('/admin/emulator-bot/join', authenticate, emulatorBotController.joinAsPlayer);
-router.post('/admin/emulator-bot/leave', authenticate, emulatorBotController.leaveAsPlayer);
-router.post('/admin/emulator-bot/spectate', authenticate, emulatorBotController.joinAsSpectator);
-router.post('/admin/emulator-bot/input', authenticate, emulatorBotController.handleInput);
-router.post('/admin/emulator-bot/load-game', authenticate, emulatorBotController.loadGame);
-router.post('/admin/emulator-bot/save-state', authenticate, emulatorBotController.saveState);
-router.post('/admin/emulator-bot/load-state', authenticate, emulatorBotController.loadState);
-router.post('/admin/emulator-bot/toggle-pause', authenticate, emulatorBotController.togglePause);
+// ===== Game Together Routes (Virtual Controller Emulation) =====
+router.get('/admin/game-together/status', authenticate, adminOnly, gameTogetherController.getStatus);
+router.post('/admin/game-together/enable', authenticate, adminOnly, gameTogetherController.setEnabled);
+router.post('/admin/game-together/start', authenticate, gameTogetherController.startSession);
+router.post('/admin/game-together/stop', authenticate, gameTogetherController.stopSession);
+router.get('/admin/game-together/session/:channelId', authenticate, gameTogetherController.getSession);
+router.post('/admin/game-together/join', authenticate, gameTogetherController.joinAsPlayer);
+router.post('/admin/game-together/leave', authenticate, gameTogetherController.leaveAsPlayer);
+router.post('/admin/game-together/input', authenticate, gameTogetherController.handleInput);
 
 // ===== Channel Moderation Routes =====
 router.post('/channels/:channelId/kick/:userId', authenticate, adminOnly, channelController.kickUser);
