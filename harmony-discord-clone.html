@@ -1568,6 +1568,26 @@
                             <div class="res">1080p</div>
                             <div class="fps">60 FPS</div>
                         </div>
+                        <div class="quality-option" onclick="selectQuality(1440, 30)" id="quality1440">
+                            <div class="res">1440p</div>
+                            <div class="fps">30 FPS</div>
+                        </div>
+                        <div class="quality-option" onclick="selectQuality(1440, 60)" id="quality1440_60">
+                            <div class="res">1440p</div>
+                            <div class="fps">60 FPS</div>
+                        </div>
+                        <div class="quality-option" onclick="selectQuality(2160, 30)" id="quality4k">
+                            <div class="res">4K</div>
+                            <div class="fps">30 FPS</div>
+                        </div>
+                        <div class="quality-option" onclick="selectQuality(2160, 60)" id="quality4k_60">
+                            <div class="res">4K</div>
+                            <div class="fps">60 FPS</div>
+                        </div>
+                        <div class="quality-option" onclick="selectQuality(4320, 30)" id="quality8k">
+                            <div class="res">8K</div>
+                            <div class="fps">30 FPS</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1774,17 +1794,30 @@
         // Select Quality
         function selectQuality(height, fps) {
             document.querySelectorAll('.quality-option').forEach(opt => opt.classList.remove('selected'));
-            
-            if (height === 720) {
-                state.selectedQuality = { width: 1280, height: 720, frameRate: fps };
-                document.getElementById('quality720').classList.add('selected');
-            } else if (fps === 30) {
-                state.selectedQuality = { width: 1920, height: 1080, frameRate: 30 };
-                document.getElementById('quality1080').classList.add('selected');
-            } else {
-                state.selectedQuality = { width: 1920, height: 1080, frameRate: 60 };
-                document.getElementById('quality1080_60').classList.add('selected');
-            }
+
+            const qualityMap = {
+                720: { width: 1280, height: 720 },
+                1080: { width: 1920, height: 1080 },
+                1440: { width: 2560, height: 1440 },
+                2160: { width: 3840, height: 2160 },
+                4320: { width: 7680, height: 4320 }
+            };
+
+            const dims = qualityMap[height] || qualityMap[1080];
+            state.selectedQuality = { width: dims.width, height: dims.height, frameRate: fps };
+
+            // Update selected UI
+            let elementId = '';
+            if (height === 720) elementId = 'quality720';
+            else if (height === 1080 && fps === 30) elementId = 'quality1080';
+            else if (height === 1080 && fps === 60) elementId = 'quality1080_60';
+            else if (height === 1440 && fps === 30) elementId = 'quality1440';
+            else if (height === 1440 && fps === 60) elementId = 'quality1440_60';
+            else if (height === 2160 && fps === 30) elementId = 'quality4k';
+            else if (height === 2160 && fps === 60) elementId = 'quality4k_60';
+            else if (height === 4320) elementId = 'quality8k';
+
+            if (elementId) document.getElementById(elementId).classList.add('selected');
         }
 
         // Start Screen Share

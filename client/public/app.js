@@ -573,6 +573,7 @@ function renderApp() {
           <div class="divider"></div>
           <span class="description">${state.currentChannel?.description || 'Welcome to F7Lans!'}</span>
           <div class="header-actions">
+            <button class="header-btn" id="chatFullscreenBtn" onclick="toggleChatFullscreen()" title="Fullscreen">⛶</button>
             <button class="header-btn" onclick="showMembers()" title="Members">👥</button>
             <button class="header-btn" onclick="showPinned()" title="Pinned">📌</button>
             <button class="header-btn" onclick="showSearch()" title="Search">🔍</button>
@@ -1108,6 +1109,20 @@ function toggleDeafen() {
   render();
 }
 
+// Toggle chat fullscreen mode
+function toggleChatFullscreen() {
+  const mainContent = document.querySelector('.main-content');
+  const btn = document.getElementById('chatFullscreenBtn');
+  mainContent.classList.toggle('chat-fullscreen');
+
+  // Update button tooltip
+  if (mainContent.classList.contains('chat-fullscreen')) {
+    btn.title = 'Exit Fullscreen';
+  } else {
+    btn.title = 'Fullscreen';
+  }
+}
+
 async function toggleCamera() {
   if (!state.isCameraOn) {
     try {
@@ -1154,8 +1169,21 @@ async function toggleCamera() {
 async function toggleScreenShare() {
   if (!state.isScreenSharing) {
     try {
+      // Get quality constraints based on setting
+      const qualityMap = {
+        '720p': { width: 1280, height: 720, frameRate: 30 },
+        '1080p': { width: 1920, height: 1080, frameRate: 30 },
+        '1080p60': { width: 1920, height: 1080, frameRate: 60 },
+        '1440p': { width: 2560, height: 1440, frameRate: 30 },
+        '1440p60': { width: 2560, height: 1440, frameRate: 60 },
+        '4k': { width: 3840, height: 2160, frameRate: 30 },
+        '4k60': { width: 3840, height: 2160, frameRate: 60 },
+        '8k': { width: 7680, height: 4320, frameRate: 30 }
+      };
+      const quality = qualityMap[state.settings.screenShareQuality] || qualityMap['1080p'];
+
       state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1920, height: 1080, frameRate: 30 },
+        video: { width: quality.width, height: quality.height, frameRate: quality.frameRate },
         audio: true
       });
 
@@ -2210,8 +2238,10 @@ function openScreenShareModal() {
     { id: '1080p', label: '1080p (Full HD)', desc: '1920x1080 @ 30fps' },
     { id: '1080p60', label: '1080p 60fps', desc: '1920x1080 @ 60fps' },
     { id: '1440p', label: '1440p (2K)', desc: '2560x1440 @ 30fps' },
+    { id: '1440p60', label: '1440p 60fps', desc: '2560x1440 @ 60fps' },
     { id: '4k', label: '4K (Ultra HD)', desc: '3840x2160 @ 30fps' },
-    { id: '4k60', label: '4K 60fps', desc: '3840x2160 @ 60fps' }
+    { id: '4k60', label: '4K 60fps', desc: '3840x2160 @ 60fps' },
+    { id: '8k', label: '8K (Ultra HD)', desc: '7680x4320 @ 30fps' }
   ];
 
   modal.innerHTML = `
@@ -2657,6 +2687,18 @@ function addStyles() {
       background: var(--bg-dark);
     }
 
+    /* Chat Fullscreen Mode */
+    .main-content.chat-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 1500;
+      width: 100vw;
+      height: 100vh;
+    }
+    .main-content.chat-fullscreen .channel-header {
+      background: var(--bg-dark);
+    }
+
     .channel-header {
       height: 48px;
       padding: 0 16px;
@@ -3052,6 +3094,27 @@ function addStyles() {
   `;
   document.head.appendChild(style);
 }
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Escape to close modals and exit fullscreen
+  if (e.key === 'Escape') {
+    // Exit chat fullscreen if active
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent && mainContent.classList.contains('chat-fullscreen')) {
+      mainContent.classList.remove('chat-fullscreen');
+      const btn = document.getElementById('chatFullscreenBtn');
+      if (btn) btn.title = 'Fullscreen';
+      return;
+    }
+
+    // Close modal if open
+    const modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay && modalOverlay.style.display === 'flex') {
+      modalOverlay.style.display = 'none';
+    }
+  }
+});
 
 // Start the application
 init();
