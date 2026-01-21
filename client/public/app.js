@@ -49,16 +49,7 @@ const state = {
     audioOutputs: [],
     videoInputs: []
   },
-  // Emulator state
-  emulator: {
-    session: null,
-    isPlayer: false,
-    playerSlot: null,
-    gamepadIndex: null,
-    lastInputTime: 0,
-    pollingInterval: null
-  },
-  // Game Together state
+  // Game Together state (universal controller emulation for any game)
   gameTogether: {
     active: false,
     isHost: false,
@@ -310,81 +301,35 @@ function setupSocketListeners() {
     await handleIceCandidate(data.fromUserId, data.candidate);
   });
 
-  // ===== Emulator Bot Event Handlers =====
-  socket.on('emulator:session-started', (data) => {
-    state.emulator.session = data;
-    showToast(`${data.displayName} session started`, 'success');
-    renderEmulatorPanel();
-  });
-
-  socket.on('emulator:session-ended', (data) => {
-    state.emulator.session = null;
-    state.emulator.isPlayer = false;
-    state.emulator.playerSlot = null;
-    stopGamepadPolling();
-    showToast('Emulator session ended', 'info');
-    hideEmulatorPanel();
-  });
-
-  socket.on('emulator:player-joined', (data) => {
-    if (state.emulator.session) {
-      state.emulator.session.players = data.players;
-    }
-    if (data.userId === state.user?._id) {
-      state.emulator.isPlayer = true;
-      state.emulator.playerSlot = data.slot;
-      showToast(`You joined as Player ${data.slot + 1}`, 'success');
-      startGamepadPolling();
-    } else {
-      showToast(`Player ${data.slot + 1} joined`, 'info');
-    }
-    renderEmulatorPanel();
-  });
-
-  socket.on('emulator:player-left', (data) => {
-    if (state.emulator.session) {
-      state.emulator.session.players = data.players;
-    }
-    if (data.userId === state.user?._id) {
-      state.emulator.isPlayer = false;
-      state.emulator.playerSlot = null;
-      stopGamepadPolling();
-    }
-    renderEmulatorPanel();
-  });
-
-  socket.on('emulator:video-chunk', (data) => {
-    handleEmulatorVideoChunk(data);
-  });
-
-  socket.on('emulator:game-loaded', (data) => {
-    showToast(`Game loaded: ${data.gamePath}`, 'success');
-  });
-
-  socket.on('emulator:error', (data) => {
-    showToast(`Emulator error: ${data.message}`, 'error');
-  });
-
   // ===== Game Together Event Handlers =====
   socket.on('gameTogether:session-started', (data) => {
     showToast(`Game Together session started by ${data.hostUsername}`, 'success');
+    console.log('[Game Together] Session started:', data);
   });
 
   socket.on('gameTogether:session-stopped', (data) => {
     showToast('Game Together session ended', 'info');
     if (state.gameTogether?.active) {
-      stopGameTogetherPolling();
+      stopGameTogetherGamepadPolling();
       state.gameTogether.active = false;
       state.gameTogether.isHost = false;
+      state.gameTogether.hostUserId = null;
+      state.gameTogether.playerSlot = null;
     }
   });
 
   socket.on('gameTogether:player-joined', (data) => {
     showToast(`${data.username} joined as Player ${data.playerSlot}`, 'success');
+    console.log('[Game Together] Player joined:', data);
   });
 
   socket.on('gameTogether:player-left', (data) => {
     showToast(`Player ${data.playerSlot} left the session`, 'info');
+    console.log('[Game Together] Player left:', data);
+  });
+
+  socket.on('gameTogether:input-received', (data) => {
+    // Input acknowledged by server (for debugging)
   });
 
   // ===== Bot Event Handlers =====
@@ -1883,12 +1828,8 @@ function openBotsModal() {
       <div class="settings-section">
         <h3>Gaming</h3>
         <div class="bot-grid">
-          <button class="bot-tile" onclick="state.previousModal='bots'; openEmulatorModal();">
-            <span class="bot-icon">🎮</span>
-            <span>Emulator</span>
-          </button>
           <button class="bot-tile" onclick="openGameTogetherModal()">
-            <span class="bot-icon">🕹️</span>
+            <span class="bot-icon">🎮</span>
             <span>Game Together</span>
           </button>
           <button class="bot-tile" onclick="openRPGBotModal()">
@@ -1988,50 +1929,59 @@ function openRPGBotModal() { state.previousModal = 'bots'; showToast('RPG bot co
 function openChromeBotModal() { state.previousModal = 'bots'; showToast('Chrome bot coming soon', 'info'); }
 function openImageSearchModal() { state.previousModal = 'bots'; showToast('Image search coming soon', 'info'); }
 function openActivityStatsModal() { state.previousModal = 'bots'; showToast('Activity stats coming soon', 'info'); }
-function openGameTogetherModal() { state.previousModal = 'bots'; showToast('Game Together coming soon', 'info'); }
+// ===== Game Together Functions =====
+// Universal controller emulation - works with ANY local multiplayer game
 
-// ===== Emulator Functions =====
-async function openEmulatorModal() {
+function openGameTogetherModal() {
+  state.previousModal = 'bots';
+
+  if (!state.inVoice) {
+    showToast('Join a voice channel first', 'warning');
+    return;
+  }
+
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
-      <h2>Emulator Multiplayer</h2>
+      <h2>🎮 Game Together</h2>
       <button class="close-btn" onclick="closeModal()">×</button>
     </div>
     <div class="modal-body">
-      <p style="color: var(--text-muted); margin-bottom: 16px;">Play classic games together! Select an emulator to start.</p>
+      <p style="color: var(--text-muted); margin-bottom: 16px;">Play ANY local multiplayer game together over the network!</p>
 
-      <div class="bot-grid">
-        <button class="bot-tile" onclick="selectEmulator('xbox')">
-          <span class="bot-icon">🎮</span>
-          <span>Xbox (xemu)</span>
-        </button>
-        <button class="bot-tile" onclick="selectEmulator('dreamcast')">
-          <span class="bot-icon">💿</span>
-          <span>Dreamcast</span>
-        </button>
-        <button class="bot-tile" onclick="selectEmulator('gamecube')">
-          <span class="bot-icon">🟣</span>
-          <span>GameCube/Wii</span>
-        </button>
-        <button class="bot-tile" onclick="selectEmulator('ps3')">
-          <span class="bot-icon">🎯</span>
-          <span>PlayStation 3</span>
-        </button>
+      <div style="background: var(--bg-dark); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px;">
+        <h3 style="margin-bottom: 12px; color: var(--accent-primary);">How it works:</h3>
+        <ul style="color: var(--text-muted); line-height: 1.8; padding-left: 20px;">
+          <li>Host shares their screen and starts a session (Player 1)</li>
+          <li>Others join and become Players 2, 3, or 4</li>
+          <li>Your controller inputs are mapped to virtual controllers on the host</li>
+          <li>Works with ANY game that supports local multiplayer!</li>
+        </ul>
       </div>
 
-      ${state.emulator.session ? `
-        <div class="settings-section" style="margin-top: 20px;">
+      ${state.gameTogether.active ? `
+        <div class="settings-section" style="margin-bottom: 24px;">
           <h3>Current Session</h3>
-          <div style="padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
-            <div style="font-weight: 500;">${escapeHtml(state.emulator.session.emulatorType)}</div>
-            <div style="font-size: 12px; color: var(--text-muted);">${state.emulator.session.players?.length || 0}/4 players</div>
+          <div style="padding: 12px; background: var(--bg-medium); border-radius: var(--radius-sm);">
+            <div style="font-weight: 500;">You are Player ${state.gameTogether.playerSlot}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${state.gameTogether.isHost ? 'Host' : 'Remote Player'}</div>
           </div>
-          <button class="btn-danger" onclick="stopEmulatorSession()" style="margin-top: 12px;">Stop Session</button>
+          <button class="btn-danger" onclick="${state.gameTogether.isHost ? 'stopGameTogether()' : 'leaveGameTogether()'}" style="margin-top: 12px;">
+            ${state.gameTogether.isHost ? 'Stop Session' : 'Leave Session'}
+          </button>
         </div>
-      ` : ''}
+      ` : `
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button class="btn-primary" onclick="startGameTogether()" style="flex: 1; max-width: 200px;">
+            🎮 Start Session (Host)
+          </button>
+          <button class="btn-primary" onclick="joinGameTogether()" style="flex: 1; max-width: 200px;">
+            👥 Join Session
+          </button>
+        </div>
+      `}
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal()">Close</button>
@@ -2041,176 +1991,214 @@ async function openEmulatorModal() {
   overlay.classList.add('active');
 }
 
-async function selectEmulator(type) {
+// Start a Game Together session (as host)
+async function startGameTogether() {
+  closeModalFull();
+
   if (!state.voiceChannel) {
-    showToast('Join a voice channel first', 'warning');
+    showToast('Join a voice channel first', 'error');
     return;
   }
 
   try {
-    const response = await api.request('/emulator-bot/games', {
+    showToast('Starting Game Together session...', 'info');
+
+    const response = await api.request('/admin/game-together/start', {
       method: 'POST',
-      body: JSON.stringify({ emulatorType: type })
+      body: JSON.stringify({ channelId: state.voiceChannel._id })
     });
-    renderGamePicker(type, response.games || []);
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = true;
+    state.gameTogether.hostUserId = state.user._id;
+    state.gameTogether.playerSlot = 1;
+
+    showToast('🎮 Game Together session started! You are Player 1', 'success');
+    // Host uses physical controller, no emulation needed
   } catch (error) {
-    showToast('Failed to load games: ' + error.message, 'error');
+    console.error('Failed to start Game Together session:', error);
+    showToast('Failed to start session: ' + error.message, 'error');
   }
 }
 
-function renderGamePicker(emulatorType, games) {
-  const modal = document.getElementById('modalContent');
-  const emulatorNames = { xbox: 'Xbox', dreamcast: 'Dreamcast', gamecube: 'GameCube/Wii', ps3: 'PlayStation 3' };
+// Join an existing Game Together session
+async function joinGameTogether() {
+  closeModalFull();
 
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>${emulatorNames[emulatorType]} Games</h2>
-      <button class="close-btn" onclick="openEmulatorModal()">×</button>
-    </div>
-    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
-      ${games.length === 0 ? '<p style="color: var(--text-muted);">No games found. Ask an admin to configure the ROM paths.</p>' : ''}
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${games.map(game => `
-          <button class="game-item" onclick="startEmulatorGame('${emulatorType}', '${escapeHtml(game.path)}')">
-            <span class="game-name">${escapeHtml(game.name)}</span>
-          </button>
-        `).join('')}
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="openEmulatorModal()">Back</button>
-    </div>
-  `;
-}
+  if (!state.voiceChannel) {
+    showToast('Join a voice channel first', 'error');
+    return;
+  }
 
-async function startEmulatorGame(emulatorType, gamePath) {
   try {
-    await api.request('/emulator-bot/start', {
+    showToast('Joining Game Together session...', 'info');
+
+    const response = await api.request('/admin/game-together/join', {
       method: 'POST',
-      body: JSON.stringify({
-        channelId: state.voiceChannel._id,
-        emulatorType,
-        gamePath
-      })
+      body: JSON.stringify({ channelId: state.voiceChannel._id })
     });
-    showToast('Starting emulator session...', 'success');
-    closeModalFull();
+
+    state.gameTogether.active = true;
+    state.gameTogether.isHost = false;
+    state.gameTogether.playerSlot = response.playerSlot;
+
+    showToast(`🎮 Joined as Player ${response.playerSlot}! Connect your controller.`, 'success');
+
+    // Start polling gamepad for input
+    startGameTogetherGamepadPolling();
   } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
+    console.error('Failed to join Game Together session:', error);
+    showToast('Failed to join session: ' + error.message, 'error');
   }
 }
 
-async function stopEmulatorSession() {
+// Leave Game Together session
+async function leaveGameTogether() {
+  if (!state.gameTogether.active) return;
+
   try {
-    await api.request('/emulator-bot/stop', {
+    await api.request('/admin/game-together/leave', {
       method: 'POST',
       body: JSON.stringify({ channelId: state.voiceChannel?._id })
     });
-    showToast('Session stopped', 'success');
-    openEmulatorModal();
+
+    stopGameTogetherGamepadPolling();
+
+    state.gameTogether.active = false;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = null;
+    state.gameTogether.playerSlot = null;
+
+    showToast('Left Game Together session', 'info');
   } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
+    console.error('Failed to leave Game Together session:', error);
+    showToast('Failed to leave session: ' + error.message, 'error');
   }
 }
 
-function renderEmulatorPanel() {
-  // Update voice panel if emulator session is active
-  const videoGrid = document.getElementById('videoGrid');
-  if (videoGrid && state.emulator.session) {
-    // Add emulator video tile
-    let emulatorTile = document.getElementById('video-tile-emulator');
-    if (!emulatorTile) {
-      emulatorTile = document.createElement('div');
-      emulatorTile.className = 'video-tile';
-      emulatorTile.id = 'video-tile-emulator';
-      emulatorTile.innerHTML = `
-        <video id="video-emulator" autoplay playsinline></video>
-        <div class="video-label">Emulator - ${state.emulator.session.emulatorType}</div>
-        <div class="player-slots" id="emulatorPlayerSlots"></div>
-      `;
-      videoGrid.appendChild(emulatorTile);
-    }
-    renderEmulatorPlayerSlots();
-  }
-}
+// Stop Game Together session (host only)
+async function stopGameTogether() {
+  if (!state.gameTogether.active || !state.gameTogether.isHost) return;
 
-function hideEmulatorPanel() {
-  const tile = document.getElementById('video-tile-emulator');
-  if (tile) tile.remove();
-}
-
-function renderEmulatorPlayerSlots() {
-  const container = document.getElementById('emulatorPlayerSlots');
-  if (!container || !state.emulator.session) return;
-
-  const players = state.emulator.session.players || [];
-  let html = '<div style="display: flex; gap: 8px; padding: 8px;">';
-
-  for (let i = 0; i < 4; i++) {
-    const player = players.find(p => p.slot === i);
-    if (player) {
-      html += `<div class="player-slot filled" title="${escapeHtml(player.username)}">P${i + 1}</div>`;
-    } else {
-      html += `<div class="player-slot empty" onclick="joinEmulatorSlot(${i})">P${i + 1}</div>`;
-    }
-  }
-
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-async function joinEmulatorSlot(slot) {
   try {
-    state.socket.emit('emulator:join-player', {
-      channelId: state.voiceChannel?._id,
-      slot
+    await api.request('/admin/game-together/stop', {
+      method: 'POST',
+      body: JSON.stringify({ channelId: state.voiceChannel?._id })
     });
+
+    state.gameTogether.active = false;
+    state.gameTogether.isHost = false;
+    state.gameTogether.hostUserId = null;
+    state.gameTogether.playerSlot = null;
+
+    showToast('Game Together session stopped', 'info');
   } catch (error) {
-    showToast('Failed to join: ' + error.message, 'error');
+    console.error('Failed to stop Game Together session:', error);
+    showToast('Failed to stop session: ' + error.message, 'error');
   }
 }
 
-// ===== Gamepad Polling =====
-function startGamepadPolling() {
-  if (state.emulator.pollingInterval) return;
+// ===== Gamepad Polling for Game Together =====
+let lastGameTogetherInputTime = 0;
 
-  state.emulator.pollingInterval = setInterval(() => {
-    const gamepads = navigator.getGamepads();
-    const gamepad = gamepads[state.emulator.gamepadIndex || 0];
+function startGameTogetherGamepadPolling() {
+  if (state.gameTogether.pollingInterval) return;
 
-    if (gamepad && state.emulator.isPlayer && state.socket) {
-      const input = {
-        buttons: gamepad.buttons.map(b => b.pressed),
-        axes: gamepad.axes.map(a => Math.round(a * 32767))
-      };
+  console.log('[Game Together] Starting gamepad polling');
 
-      state.socket.emit('emulator:input', {
-        channelId: state.voiceChannel?._id,
-        slot: state.emulator.playerSlot,
-        input
-      });
-    }
-  }, 16); // ~60fps
+  state.gameTogether.pollingInterval = setInterval(() => {
+    pollGameTogetherGamepad();
+  }, 16); // ~60 FPS
 }
 
-function stopGamepadPolling() {
-  if (state.emulator.pollingInterval) {
-    clearInterval(state.emulator.pollingInterval);
-    state.emulator.pollingInterval = null;
-  }
-}
-
-function stopGameTogetherPolling() {
+function stopGameTogetherGamepadPolling() {
   if (state.gameTogether.pollingInterval) {
     clearInterval(state.gameTogether.pollingInterval);
     state.gameTogether.pollingInterval = null;
+    console.log('[Game Together] Stopped gamepad polling');
   }
 }
 
-function handleEmulatorVideoChunk(data) {
-  // Handle video chunks from emulator - simplified for web
-  console.log('Received emulator video chunk');
+function pollGameTogetherGamepad() {
+  const gamepads = navigator.getGamepads();
+
+  // Find first connected gamepad
+  let gamepad = null;
+  if (state.gameTogether.gamepadIndex !== null) {
+    gamepad = gamepads[state.gameTogether.gamepadIndex];
+  }
+
+  if (!gamepad) {
+    for (let i = 0; i < gamepads.length; i++) {
+      if (gamepads[i]) {
+        gamepad = gamepads[i];
+        state.gameTogether.gamepadIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (!gamepad) return;
+
+  // Build input data (Xbox 360 layout)
+  const inputData = {
+    // Buttons (standard mapping)
+    buttons: {
+      a: gamepad.buttons[0]?.pressed || false,
+      b: gamepad.buttons[1]?.pressed || false,
+      x: gamepad.buttons[2]?.pressed || false,
+      y: gamepad.buttons[3]?.pressed || false,
+      lb: gamepad.buttons[4]?.pressed || false,
+      rb: gamepad.buttons[5]?.pressed || false,
+      lt: gamepad.buttons[6]?.value || 0,
+      rt: gamepad.buttons[7]?.value || 0,
+      back: gamepad.buttons[8]?.pressed || false,
+      start: gamepad.buttons[9]?.pressed || false,
+      ls: gamepad.buttons[10]?.pressed || false,
+      rs: gamepad.buttons[11]?.pressed || false,
+      up: gamepad.buttons[12]?.pressed || false,
+      down: gamepad.buttons[13]?.pressed || false,
+      left: gamepad.buttons[14]?.pressed || false,
+      right: gamepad.buttons[15]?.pressed || false,
+      guide: gamepad.buttons[16]?.pressed || false
+    },
+    // Axes (-1 to 1, converted to -32768 to 32767)
+    axes: {
+      leftX: Math.round(gamepad.axes[0] * 32767),
+      leftY: Math.round(gamepad.axes[1] * 32767),
+      rightX: Math.round(gamepad.axes[2] * 32767),
+      rightY: Math.round(gamepad.axes[3] * 32767)
+    }
+  };
+
+  // Throttle to max 60 updates/second
+  const now = Date.now();
+  if (now - lastGameTogetherInputTime < 16) return;
+  lastGameTogetherInputTime = now;
+
+  if (!state.socket || !state.gameTogether.active) return;
+
+  // Send via Socket.IO for low latency
+  state.socket.emit('gameTogether:input', {
+    channelId: state.voiceChannel?._id,
+    inputData
+  });
 }
+
+// Gamepad connection events
+window.addEventListener('gamepadconnected', (e) => {
+  if (state.gameTogether?.active && !state.gameTogether.isHost) {
+    state.gameTogether.gamepadIndex = e.gamepad.index;
+    showToast(`Controller connected: ${e.gamepad.id}`, 'success');
+  }
+});
+
+window.addEventListener('gamepaddisconnected', (e) => {
+  if (state.gameTogether?.gamepadIndex === e.gamepad.index) {
+    state.gameTogether.gamepadIndex = null;
+    showToast('Controller disconnected', 'warning');
+  }
+});
 
 // ===== Screen Share Quality Modal =====
 function openScreenShareModal() {
