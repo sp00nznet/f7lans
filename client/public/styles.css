@@ -344,6 +344,85 @@ body {
   color: var(--text-muted);
 }
 
+.channel-edit {
+  opacity: 0;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+}
+
+.channel:hover .channel-edit {
+  opacity: 0.6;
+}
+
+.channel-edit:hover {
+  opacity: 1 !important;
+  background: var(--bg-light);
+}
+
+/* DM Section */
+.dm-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--bg-medium);
+  padding-top: 8px;
+}
+
+.dm-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dm-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.dm-unread {
+  background: var(--danger);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.encrypted-badge {
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.no-messages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px;
+}
+
+.no-messages .lock-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.no-messages h3 {
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
 /* Voice Status */
 .voice-status {
   background: var(--bg-dark);

@@ -694,7 +694,7 @@ Request:
 ```json
 {
   "permissions": {
-    "spotify-bot": true,
+    "youtube-bot": true,
     "file-share": true
   }
 }
@@ -773,7 +773,7 @@ Authorization: Bearer <token>
 Response:
 ```json
 {
-  "feature": "spotify-bot",
+  "feature": "youtube-bot",
   "hasPermission": true
 }
 ```
@@ -995,26 +995,6 @@ POST /api/admin/iptv-bot/recordings
 GET /api/admin/iptv-bot/recordings
 DELETE /api/admin/iptv-bot/recordings/:recordingId
 POST /api/admin/iptv-bot/recordings/:recordingId/tag
-Authorization: Bearer <token>
-```
-
-#### Spotify Bot
-
-```http
-GET /api/admin/spotify-bot/status
-POST /api/admin/spotify-bot/enable
-POST /api/admin/spotify-bot/configure
-GET /api/admin/spotify-bot/auth-url
-POST /api/admin/spotify-bot/callback
-POST /api/admin/spotify-bot/disconnect
-GET /api/admin/spotify-bot/search?query=...&type=track
-GET /api/admin/spotify-bot/playlists
-GET /api/admin/spotify-bot/playlists/:playlistId/tracks
-POST /api/admin/spotify-bot/play
-POST /api/admin/spotify-bot/queue
-POST /api/admin/spotify-bot/skip
-GET /api/admin/spotify-bot/queue/:channelId
-POST /api/admin/spotify-bot/stop
 Authorization: Bearer <token>
 ```
 

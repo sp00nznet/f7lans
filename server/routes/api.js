@@ -103,9 +103,11 @@ router.delete('/users/:userId/friend', authenticate, userController.removeFriend
 router.post('/users/:userId/block', authenticate, userController.blockUser);
 router.delete('/users/:userId/block', authenticate, userController.unblockUser);
 
-// Direct Messages
+// Direct Messages (End-to-End Encrypted)
 router.get('/dm/conversations', authenticate, userController.getConversations);
 router.get('/dm/:userId', authenticate, userController.getDirectMessages);
+router.get('/dm/:userId/public-key', authenticate, userController.getPublicKey);
+router.post('/dm/public-key', authenticate, userController.setPublicKey);
 
 // ===== Channel Routes =====
 router.get('/channels', authenticate, channelController.getChannels);

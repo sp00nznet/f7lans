@@ -387,13 +387,13 @@ const handleUserConnection = async (io, socket) => {
     }
   });
 
-  // ===== Direct Messages =====
+  // ===== Direct Messages (End-to-End Encrypted) =====
   socket.on('dm:send', async (data) => {
     try {
-      const { recipientId, content, attachments } = data;
+      const { recipientId, encryptedContent, iv, encryptedKey } = data;
 
-      if (!content && (!attachments || attachments.length === 0)) {
-        return socket.emit('error', { message: 'Message content required' });
+      if (!encryptedContent || !iv || !encryptedKey) {
+        return socket.emit('error', { message: 'Encrypted message data required' });
       }
 
       // Check if blocked
@@ -402,26 +402,64 @@ const handleUserConnection = async (io, socket) => {
         return socket.emit('error', { message: 'User not found' });
       }
 
-      if (recipient.blockedUsers.includes(user._id)) {
+      if (recipient.blockedUsers?.includes(user._id)) {
         return socket.emit('error', { message: 'Cannot message this user' });
       }
 
       const dm = new DirectMessage({
-        participants: [user._id, recipientId],
+        participants: [user._id, recipientId].sort(),
         sender: user._id,
-        content,
-        attachments: attachments || []
+        recipient: recipientId,
+        encryptedContent,
+        iv,
+        encryptedKey
       });
 
       await dm.save();
       await dm.populate('sender', 'username displayName avatar');
 
-      // Send to both users
+      // Send to both users - they will decrypt on their end
       socket.emit('dm:new', dm);
       io.to(`user:${recipientId}`).emit('dm:new', dm);
     } catch (error) {
       console.error('DM send error:', error);
       socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
+
+  // Update user's public key for E2E encryption
+  socket.on('dm:setPublicKey', async (data) => {
+    try {
+      const { publicKey } = data;
+      if (!publicKey) {
+        return socket.emit('error', { message: 'Public key required' });
+      }
+
+      await User.findByIdAndUpdate(user._id, { publicKey });
+      socket.emit('dm:publicKeySet', { success: true });
+    } catch (error) {
+      console.error('Set public key error:', error);
+      socket.emit('error', { message: 'Failed to set public key' });
+    }
+  });
+
+  // Get a user's public key (for encrypting messages to them)
+  socket.on('dm:getPublicKey', async (data) => {
+    try {
+      const { userId } = data;
+      const targetUser = await User.findById(userId).select('publicKey username displayName');
+      if (!targetUser) {
+        return socket.emit('error', { message: 'User not found' });
+      }
+      socket.emit('dm:publicKey', {
+        userId,
+        username: targetUser.username,
+        displayName: targetUser.displayName,
+        publicKey: targetUser.publicKey
+      });
+    } catch (error) {
+      console.error('Get public key error:', error);
+      socket.emit('error', { message: 'Failed to get public key' });
     }
   });
 

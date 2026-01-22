@@ -114,6 +114,11 @@ const userSchema = new mongoose.Schema({
     enableDMs: { type: Boolean, default: true },
     enableMentions: { type: Boolean, default: true }
   },
+  // Public key for end-to-end encrypted DMs (stored as JWK JSON string)
+  publicKey: {
+    type: String,
+    default: null
+  },
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

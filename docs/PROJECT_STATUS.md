@@ -139,12 +139,9 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | Emby | ✅ | ✅ | Stream from Emby server |
 | Jellyfin | ✅ | ✅ | Stream from Jellyfin |
 | IPTV | ✅ | ✅ | Live TV with EPG guide |
-| Spotify | ✅ | ✅ | Collaborative music queue |
 | Twitch | ✅ | ✅ | Watch Twitch streams together |
 | Chrome | ✅ | ✅ | Shared browser sessions |
-| Image Search | ✅ | ✅ | Google images with NSFW filter |
-| Activity Stats | ✅ | ✅ | Gaming leaderboards |
-| RPG | ✅ | ✅ | Tabletop text adventures |
+| Game Together | ✅ | ✅ | Virtual controllers for local co-op |
 
 ### Gaming Features
 
@@ -200,7 +197,7 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | JWT Auth | ✅ | Token authentication |
 | File Uploads | ✅ | Avatars, attachments |
 
-### Bot Services (11 Total)
+### Bot Services (8 Total)
 
 | Service | Status | File |
 |:--------|:------:|:-----|
@@ -209,12 +206,9 @@ iOS/Android support via Capacitor. Framework is in place but full implementation
 | Emby Bot | ✅ | `server/services/embyBotService.js` |
 | Jellyfin Bot | ✅ | `server/services/jellyfinBotService.js` |
 | IPTV Bot | ✅ | `server/services/iptvBotService.js` |
-| Spotify Bot | ✅ | `server/services/spotifyBotService.js` |
 | Twitch Bot | ✅ | `server/services/twitchBotService.js` |
 | Chrome Bot | ✅ | `server/services/chromeBotService.js` |
-| Image Search Bot | ✅ | `server/services/imageSearchBotService.js` |
-| Activity Stats Bot | ✅ | `server/services/activityStatsBotService.js` |
-| RPG Bot | ✅ | `server/services/rpgBotService.js` |
+| Game Together | ✅ | `server/services/gameTogetherService.js` |
 
 ### Server-Side Features
 
@@ -445,14 +439,14 @@ f7lans/
 
 | Item | Status | Notes |
 |:-----|:------:|:------|
-| Star Citizen Bot | Server Only | Removed from clients, still on server |
 | File Sharing | Full | P2P file sharing is active |
 
 ### Future Improvements
 
 - [x] Add federation UI to web client
+- [x] End-to-end encrypted direct messages
+- [x] Channel management (create, rename, set topic)
 - [ ] Mobile app full implementation
-- [ ] Remove Star Citizen bot from server (if desired)
 - [ ] OAuth providers (Discord, Google)
 - [ ] Custom emojis
 - [ ] Audit logs
@@ -469,12 +463,14 @@ f7lans/
 - Game Together universal controller emulation
 - Chat fullscreen mode
 - Comprehensive bot management UI
-- NSFW filter controls for Image Search
 - New F7Lans logo and branding
+- End-to-end encrypted direct messages (admins cannot read)
+- Channel management (create, rename, set topics)
+- DM users visible in sidebar
 
-**Removed:**
-- Star Citizen bot (from clients)
-- File sharing button (from desktop client UI)
+**Streamlined Bot Selection:**
+- Removed Spotify, Image Search, Activity Stats, RPG bots
+- Focus on 8 core bots: YouTube, Plex, Emby, Jellyfin, IPTV, Twitch, Chrome, Game Together
 
 ---
 

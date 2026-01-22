@@ -57,7 +57,7 @@
 │   │ Locally │         │ MongoDB │        │ Nitro   │                │
 │   └─────────┘         └─────────┘        └─────────┘                │
 │                                                                      │
-│   11 Built-in Bots • Game Together • 8K Streaming • Federation      │
+│   8 Built-in Bots • Game Together • 8K Streaming • Federation       │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -119,7 +119,7 @@ Default login: `admin` / `admin123` (change this immediately!)
 | **Voice Chat** | Crystal-clear WebRTC audio with echo/noise cancellation |
 | **Video Chat** | HD video calls (720p/1080p) with grid view |
 | **Screen Share** | Share screens, windows, or tabs — multiple at once |
-| **Direct Messages** | Private conversations with online status |
+| **Direct Messages** | End-to-end encrypted private conversations (admins can't read) |
 
 ### Gaming Integration
 
@@ -165,7 +165,7 @@ Default login: `admin` / `admin123` (change this immediately!)
 
 ## Media Bots
 
-F7Lans includes **11 built-in bots** plus **Game Together** — all free, no subscriptions required:
+F7Lans includes **8 built-in bots** plus **Game Together** — all free, no subscriptions required:
 
 ### Streaming Bots
 
@@ -176,7 +176,6 @@ F7Lans includes **11 built-in bots** plus **Game Together** — all free, no sub
 | **Emby** | Stream from Emby | Emby Media Server |
 | **Jellyfin** | Stream from Jellyfin | Jellyfin (free Plex alt) |
 | **IPTV** | Live TV with EPG guide | M3U playlists |
-| **Spotify** | Collaborative music with queue | Spotify Premium |
 | **Twitch** | Watch streams together | Twitch |
 
 ### Utility Bots
@@ -184,9 +183,6 @@ F7Lans includes **11 built-in bots** plus **Game Together** — all free, no sub
 | Bot | Description |
 |:----|:------------|
 | **Chrome** | Shared browser sessions with control transfer |
-| **Image Search** | Google image search with NSFW filtering |
-| **Activity Stats** | Server-wide gaming leaderboards |
-| **RPG** | Tabletop text adventures (6 classes, 5 settings) |
 
 ### Gaming Bots
 
@@ -242,9 +238,8 @@ F7Lans includes **11 built-in bots** plus **Game Together** — all free, no sub
 | **YouTube Bot** | Built-in | No | No |
 | **Plex/Emby/Jellyfin** | Built-in | No | No |
 | **IPTV (Live TV)** | Built-in | No | No |
-| **Spotify Bot** | Built-in | No | No |
 | **Shared Browser** | Built-in | No | No |
-| **RPG Bot** | Built-in | No | No |
+| **Encrypted DMs** | E2E Encrypted | No | No |
 | **Federation** | Yes | No | No |
 | **Steam Integration** | OAuth | Limited | Limited |
 | **Two-Factor Auth** | Yes | Yes | Yes |
@@ -258,8 +253,8 @@ F7Lans includes **11 built-in bots** plus **Game Together** — all free, no sub
 
 | You Want... | F7Lans Delivers |
 |:------------|:----------------|
-| Privacy | Your data stays on YOUR server |
-| Media streaming | 7 streaming bots built-in |
+| Privacy | Your data stays on YOUR server + E2E encrypted DMs |
+| Media streaming | 6 streaming bots built-in |
 | Live TV | IPTV with EPG guide |
 | Multiple servers | Federation support |
 | No monthly fees | Everything free, forever |
@@ -286,7 +281,7 @@ F7Lans includes **11 built-in bots** plus **Game Together** — all free, no sub
 |:---------|:------------|
 | [Installation Guide](docs/INSTALLATION.md) | Docker, manual, and production setup |
 | [Features Guide](docs/FEATURES.md) | Complete feature documentation |
-| [Bots Guide](docs/BOTS.md) | All 11 bots with setup instructions |
+| [Bots Guide](docs/BOTS.md) | All 8 bots with setup instructions |
 | [Federation Guide](docs/FEDERATION.md) | Multi-server networking |
 | [API Reference](docs/API.md) | REST & WebSocket endpoints |
 | [Architecture](docs/ARCHITECTURE.md) | System design & components |

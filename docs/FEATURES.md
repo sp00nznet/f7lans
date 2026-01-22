@@ -29,8 +29,6 @@ Detailed overview of everything F7Lans can do.
 - [Theming](#theming)
 - [Federation](#federation)
 - [Activity Tracking](#activity-tracking)
-- [Activity Stats Bot](#activity-stats-bot)
-- [Tabletop RPG Bot](#tabletop-rpg-bot)
 - [Social Account Linking](#social-account-linking)
 - [Two-Factor Authentication](#two-factor-authentication)
 - [Server Settings](#server-settings)
@@ -146,16 +144,17 @@ Share your gameplay, presentations, or applications — up to **8K resolution**.
 
 ### Direct Messages
 
-Private one-on-one conversations.
+Private one-on-one conversations with end-to-end encryption.
 
 **Features:**
-- End-to-end privacy
-- Message history
+- End-to-end encryption (admins cannot read DMs)
+- RSA-OAEP + AES-GCM hybrid encryption
+- Message history (encrypted at rest)
 - Online status visibility
 - Typing indicators
 - Read receipts
 - Block users
-- Message search
+- DM users appear in sidebar for quick access
 
 ---
 
@@ -287,7 +286,7 @@ AI-powered game recommendations.
 
 ## Media Bots
 
-F7Lans includes 12 built-in bots. Admins enable bots globally and can control which bots are available in each channel. Users with permission can use enabled bots.
+F7Lans includes 8 built-in bots. Admins enable bots globally and can control which bots are available in each channel. Users with permission can use enabled bots.
 
 ### YouTube Bot
 
@@ -393,32 +392,6 @@ http://stream-url.com/espn
 - Tag other users to notify them
 - View scheduled and completed recordings
 
-### Spotify Bot
-
-Collaborative music playback with Spotify.
-
-**Admin Setup:**
-1. Go to Settings → Administration → Media Bots → Spotify
-2. Enable the bot
-3. Create a Spotify Developer app at https://developer.spotify.com/dashboard
-4. Enter Client ID and Client Secret
-5. Click "Connect to Spotify" to authorize
-
-**Note:** Requires Spotify Premium for full playback features.
-
-**User Features:**
-- Search tracks, albums, playlists
-- Play music in voice channels
-- Add songs to queue
-- Skip current track
-- View queue
-- See user's playlists
-
-**Queue System:**
-- Fair play - users take turns
-- Anyone can add to queue
-- Queue persists until stream stops
-
 ### Chrome Bot
 
 Shared browser sessions for collaborative browsing.
@@ -460,35 +433,6 @@ Watch Twitch streams together.
 - View stream info (title, game, viewer count)
 - Embedded Twitch player and chat
 - Watch parties for favorite streamers
-
-### Image Search Bot
-
-Search and share images with safe search filtering.
-
-**Admin Setup:**
-1. Go to Settings → Administration → Media Bots → Image Search
-2. Enable the bot
-3. Enter Google API Key and Custom Search Engine ID
-4. Set safe search level (active/medium/off)
-
-**User Features:**
-- Search for images: `!image <query>`
-- Get next result: `!next`
-- Get random from results: `!random`
-- NSFW content filtered by default
-
-**Safe Search Levels:**
-| Level | Description |
-|-------|-------------|
-| active | Strict filtering (default) |
-| medium | Moderate filtering |
-| off | No filtering (admin only) |
-
-### Star Citizen Bot (DEPRECATED)
-
-> **Note:** The Star Citizen Bot has been removed from the client interfaces. Server-side code remains but is no longer accessible through the UI.
-
-This bot provided tips and information for Star Citizen players but has been deprecated in favor of focusing on core features.
 
 ---
 
@@ -668,9 +612,9 @@ Control which bots are available in each channel.
 
 ### Use Cases
 
-- **Gaming channels**: Enable only Activity Stats and RPG bots
-- **Music channels**: Enable only Spotify bot
+- **Gaming channels**: Enable only Game Together
 - **Watch party channels**: Enable YouTube, Plex, Twitch bots
+- **Browsing channels**: Enable Chrome bot for shared sessions
 - **General channels**: Disable media bots to keep focus on chat
 
 ---
@@ -716,11 +660,8 @@ Groups are collections of users with shared permissions. Users can belong to mul
 | `jellyfin-bot` | Use Jellyfin bot |
 | `chrome-bot` | Use Chrome bot |
 | `iptv-bot` | Use IPTV bot |
-| `spotify-bot` | Use Spotify bot |
 | `twitch-bot` | Use Twitch bot |
-| `image-bot` | Use Image Search bot |
-| `activity-bot` | Use Activity Stats bot |
-| `rpg-bot` | Use RPG bot |
+| `game-together` | Use Game Together |
 | `file-share` | Share and access shared files |
 | `admin-panel` | Access admin settings |
 
@@ -741,7 +682,7 @@ Groups are collections of users with shared permissions. Users can belong to mul
 
 - Create role-based groups ("Moderators", "Trusted Members", "New Users")
 - Use "Everyone" for base permissions
-- Create specific groups for bot access ("Music Lovers" for Spotify)
+- Create specific groups for bot access ("Movie Night" for media bots)
 - Review group membership regularly
 
 ---
@@ -1222,86 +1163,6 @@ Find games to play with friends:
 2. See "Common Activities" section
 3. Games you both play are highlighted
 4. Sorted by combined playtime
-
----
-
-## Activity Stats Bot
-
-Server-wide gaming statistics bot.
-
-### Admin Setup
-
-1. Go to **Settings** → **Administration** → **Media Bots** → **Activity Stats**
-2. Enable the bot
-
-### Features
-
-- **Leaderboards**: See who plays the most
-- **Top Games**: Most popular games on your server
-- **Game Stats**: Detailed stats for specific games
-- **Live Updates**: See who's playing what right now
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| View Stats | See server-wide statistics |
-| Leaderboard | Top players by playtime |
-| Game Search | Stats for a specific game |
-
----
-
-## Tabletop RPG Bot
-
-Interactive text-based adventures with your community.
-
-### Overview
-
-The RPG Bot acts as a game master, creating and running adventures for solo players or groups.
-
-### Creating a Campaign
-
-1. Enable the bot in **Settings** → **Administration** → **Media Bots** → **RPG**
-2. Start a campaign in any text channel
-3. Choose your settings:
-   - **Type**: Solo or Party
-   - **Setting**: Fantasy, Sci-Fi, Horror, Modern, Steampunk
-   - **Difficulty**: Easy, Normal, Hard, Nightmare
-
-### Character Creation
-
-Choose your class and race:
-
-**Classes:**
-| Class | Specialty |
-|-------|-----------|
-| Warrior | High HP, melee combat |
-| Mage | Powerful spells, low HP |
-| Rogue | Stealth, critical hits |
-| Cleric | Healing, support |
-| Ranger | Ranged attacks, tracking |
-| Bard | Buffs, crowd control |
-
-**Races:**
-Human, Elf, Dwarf, Halfling, Orc, Dragonborn
-
-### Gameplay
-
-Take actions during your adventure:
-
-- **Explore**: Investigate the area
-- **Search**: Look for treasure
-- **Attack**: Fight enemies
-- **Defend**: Take a defensive stance
-- **Rest**: Recover health
-- **Flee**: Escape from combat
-
-### Progression
-
-- Gain experience from combat
-- Level up to increase stats
-- Find loot and gold
-- Build your character
 
 ---
 

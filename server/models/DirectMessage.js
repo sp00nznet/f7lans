@@ -11,9 +11,24 @@ const directMessageSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  content: {
+  recipient: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  // Encrypted content - server stores this but cannot decrypt it
+  encryptedContent: {
     type: String,
-    maxlength: 4000,
+    required: true
+  },
+  // Initialization vector for AES-GCM decryption
+  iv: {
+    type: String,
+    required: true
+  },
+  // Encrypted symmetric key for recipient (encrypted with recipient's public key)
+  encryptedKey: {
+    type: String,
     required: true
   },
   attachments: [{

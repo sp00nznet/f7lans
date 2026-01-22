@@ -105,7 +105,7 @@ server/
 │   ├── jellyfinBotController.js  # Jellyfin bot API
 │   ├── chromeBotController.js    # Chrome bot API
 │   ├── iptvBotController.js      # IPTV bot API
-│   └── spotifyBotController.js   # Spotify bot API
+│   └── twitchBotController.js    # Twitch bot API
 ├── services/
 │   ├── federationService.js      # Federation logic
 │   ├── groupService.js           # Group & permissions
@@ -116,7 +116,8 @@ server/
 │   ├── jellyfinBotService.js     # Jellyfin integration
 │   ├── chromeBotService.js       # Shared browser sessions
 │   ├── iptvBotService.js         # IPTV with EPG
-│   └── spotifyBotService.js      # Spotify integration
+│   ├── twitchBotService.js       # Twitch streaming
+│   └── gameTogetherService.js    # Virtual controller emulation
 ├── socket/
 │   └── socketHandler.js          # Real-time event handling
 ├── data/

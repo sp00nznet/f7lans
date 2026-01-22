@@ -9,7 +9,7 @@
 ╚═╝        ╚═╝  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
 ```
 
-Complete documentation for all 11 built-in bots.
+Complete documentation for all 8 built-in bots.
 
 ---
 
@@ -22,13 +22,11 @@ Complete documentation for all 11 built-in bots.
   - [Emby Bot](#emby-bot)
   - [Jellyfin Bot](#jellyfin-bot)
   - [IPTV Bot](#iptv-bot)
-  - [Spotify Bot](#spotify-bot)
   - [Twitch Bot](#twitch-bot)
 - [Utility Bots](#utility-bots)
   - [Chrome Bot](#chrome-bot)
-  - [Image Search Bot](#image-search-bot)
-  - [Activity Stats Bot](#activity-stats-bot)
-  - [RPG Bot](#rpg-bot)
+- [Gaming Features](#gaming-features)
+  - [Game Together](#game-together)
 - [Per-Channel Bot Settings](#per-channel-bot-settings)
 - [Permissions](#permissions)
 
@@ -36,13 +34,14 @@ Complete documentation for all 11 built-in bots.
 
 ## Overview
 
-F7Lans includes 11 built-in bots that extend your server's functionality:
+F7Lans includes 8 built-in bots that extend your server's functionality:
 
 | Category | Bots | Count |
 |:---------|:-----|:-----:|
-| **Streaming** | YouTube, Plex, Emby, Jellyfin, IPTV, Spotify, Twitch | 7 |
-| **Utility** | Chrome, Image Search, Activity Stats, RPG | 4 |
-| **Total** | | **11** |
+| **Streaming** | YouTube, Plex, Emby, Jellyfin, IPTV, Twitch | 6 |
+| **Utility** | Chrome | 1 |
+| **Gaming** | Game Together | 1 |
+| **Total** | | **8** |
 
 ### How Bots Work
 
@@ -173,36 +172,6 @@ http://stream-url.com/espn
 
 ---
 
-### Spotify Bot
-
-Collaborative music playback with Spotify.
-
-**Admin Setup:**
-1. Go to **Settings** → **Administration** → **Media Bots** → **Spotify**
-2. Enable the bot
-3. Create a Spotify Developer app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-4. Enter Client ID and Client Secret
-5. Click "Connect to Spotify" to authorize via OAuth
-
-**Requirements:**
-- Spotify Premium account (for full playback)
-- Spotify Developer account (free)
-
-**User Features:**
-- Search tracks, albums, playlists
-- Play music in voice channels
-- Add songs to queue
-- Skip current track
-- View queue
-- Access your personal playlists
-
-**Queue System:**
-- Fair play - users take turns adding songs
-- Anyone in the channel can add to queue
-- Queue persists until stream stops
-
----
-
 ### Twitch Bot
 
 Watch Twitch streams together with embedded player.
@@ -257,103 +226,36 @@ Shared browser sessions for collaborative browsing.
 
 ---
 
-### Image Search Bot
+## Gaming Features
 
-Search and share images with safe search filtering.
+### Game Together
 
-**Admin Setup:**
-1. Go to **Settings** → **Administration** → **Media Bots** → **Image Search**
-2. Enable the bot
-3. Get a Google API Key from [console.cloud.google.com](https://console.cloud.google.com)
-4. Create a Custom Search Engine at [programmablesearchengine.google.com](https://programmablesearchengine.google.com)
-5. Enter API Key and Search Engine ID
-6. Set safe search level
-
-**Safe Search Levels:**
-
-| Level | Description |
-|:------|:------------|
-| `active` | Strict filtering (default, recommended) |
-| `medium` | Moderate filtering |
-| `off` | No filtering (admin discretion) |
-
-**Commands:**
-
-| Command | Description |
-|:--------|:------------|
-| `!image <query>` | Search for images |
-| `!next` | Show next result |
-| `!random` | Random result from current search |
-
----
-
-### Activity Stats Bot
-
-Server-wide gaming statistics and leaderboards.
+Play local multiplayer games together with virtual controllers.
 
 **Admin Setup:**
-1. Go to **Settings** → **Administration** → **Media Bots** → **Activity Stats**
+1. Go to **Settings** → **Administration** → **Media Bots** → **Game Together**
 2. Enable the bot
+3. Install ViGEmBus driver on the gaming PC for virtual controller support
 
-**Features:**
-- **Leaderboards** — See who plays the most
-- **Top Games** — Most popular games on your server
-- **Game Stats** — Detailed stats for specific games
-- **Live Updates** — See who's playing what right now
+**How It Works:**
+1. Host starts a Game Together session in a voice channel
+2. Host shares their screen showing the game
+3. Other users join as players (up to 4)
+4. Each player gets a virtual controller
+5. Players control the game using on-screen buttons or keyboard shortcuts
 
-**Stats Tracked:**
-- Total playtime per game
-- Session count
-- Last played dates
-- Percentage breakdown
+**User Features:**
+- Virtual D-pad and buttons
+- Analog stick support
+- Works with any local multiplayer game
+- Real-time input synchronization
+- Up to 4 simultaneous players
 
----
-
-### RPG Bot
-
-Interactive text-based tabletop adventures.
-
-**Admin Setup:**
-1. Go to **Settings** → **Administration** → **Media Bots** → **RPG**
-2. Enable the bot
-
-**Creating a Campaign:**
-1. Start a campaign in any text channel
-2. Choose campaign settings:
-   - **Type:** Solo or Party
-   - **Setting:** Fantasy, Sci-Fi, Horror, Modern, Steampunk
-   - **Difficulty:** Easy, Normal, Hard, Nightmare
-
-**Character Classes:**
-
-| Class | Specialty |
-|:------|:----------|
-| Warrior | High HP, melee combat |
-| Mage | Powerful spells, low HP |
-| Rogue | Stealth, critical hits |
-| Cleric | Healing, support |
-| Ranger | Ranged attacks, tracking |
-| Bard | Buffs, crowd control |
-
-**Races:**
-Human, Elf, Dwarf, Halfling, Orc, Dragonborn
-
-**Gameplay Actions:**
-
-| Action | Description |
-|:-------|:------------|
-| Explore | Investigate the area |
-| Search | Look for treasure |
-| Attack | Fight enemies |
-| Defend | Take a defensive stance |
-| Rest | Recover health |
-| Flee | Escape from combat |
-
-**Progression:**
-- Gain XP from combat
-- Level up to increase stats
-- Find loot and gold
-- Build your character over sessions
+**Use Cases:**
+- Couch co-op games over the internet
+- Fighting games with friends
+- Party games like Mario Kart (via emulator)
+- Any game with local multiplayer support
 
 ---
 
@@ -379,10 +281,10 @@ Control which bots are available in each channel.
 
 | Channel Type | Recommended Bots |
 |:-------------|:-----------------|
-| Gaming | Activity Stats, RPG |
-| Music | Spotify |
+| Gaming | Game Together |
 | Movies | YouTube, Plex, Emby, Jellyfin |
 | Watch Party | YouTube, Twitch |
+| Browsing | Chrome |
 | General | All disabled or limited |
 
 ---
@@ -400,12 +302,9 @@ Bot access is controlled through the Groups & Permissions system.
 | `emby-bot` | Emby |
 | `jellyfin-bot` | Jellyfin |
 | `iptv-bot` | IPTV |
-| `spotify-bot` | Spotify |
 | `twitch-bot` | Twitch |
 | `chrome-bot` | Chrome |
-| `image-bot` | Image Search |
-| `activity-bot` | Activity Stats |
-| `rpg-bot` | RPG |
+| `game-together` | Game Together |
 
 ### Granting Permissions
 

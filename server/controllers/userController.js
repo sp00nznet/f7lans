@@ -332,6 +332,45 @@ const getConversations = async (req, res) => {
   }
 };
 
+// Get user's public key for E2E encryption
+const getPublicKey = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).select('username displayName publicKey');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      userId: user._id,
+      username: user.username,
+      displayName: user.displayName,
+      publicKey: user.publicKey
+    });
+  } catch (error) {
+    console.error('Get public key error:', error);
+    res.status(500).json({ error: 'Failed to get public key' });
+  }
+};
+
+// Set current user's public key for E2E encryption
+const setPublicKey = async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+
+    if (!publicKey) {
+      return res.status(400).json({ error: 'Public key required' });
+    }
+
+    await User.findByIdAndUpdate(req.user._id, { publicKey });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Set public key error:', error);
+    res.status(500).json({ error: 'Failed to set public key' });
+  }
+};
+
 module.exports = {
   getProfile,
   uploadAvatar,
@@ -343,5 +382,7 @@ module.exports = {
   unblockUser,
   getCommonGames,
   getDirectMessages,
-  getConversations
+  getConversations,
+  getPublicKey,
+  setPublicKey
 };
