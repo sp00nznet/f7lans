@@ -76,6 +76,9 @@ const io = new Server(server, {
   transports: ['websocket', 'polling']
 });
 
+// Store io in app for controllers
+app.set('io', io);
+
 // Initialize socket handlers
 initializeSocket(io);
 
