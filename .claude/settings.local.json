@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run build:win:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git pull:*)",
+      "Bash(git push)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(git restore:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(git fetch:*)",
+      "Bash(git push:*)",
+      "Bash(dir /b \"C:\\\\f7lans\\\\scripts\")",
+      "Bash(dir /b \"C:\\\\f7lans\\\\electron-client\")",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker-compose:*)"
+    ]
+  }
+}

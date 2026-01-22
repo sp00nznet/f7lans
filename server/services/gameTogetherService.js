@@ -359,6 +359,23 @@ class GameTogetherService extends EventEmitter {
   }
 
   /**
+   * Get all active sessions
+   */
+  getAllSessions() {
+    const sessions = [];
+    for (const [channelId, session] of this.activeSessions) {
+      sessions.push({
+        channelId,
+        hostUserId: session.hostUserId,
+        hostUsername: session.hostUsername,
+        playerCount: session.players.size,
+        players: Array.from(session.players.values())
+      });
+    }
+    return sessions;
+  }
+
+  /**
    * Check if a user is in a session
    */
   isPlayerInSession(channelId, userId) {

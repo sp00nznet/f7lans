@@ -1,0 +1,48 @@
+{
+  "groups": {
+    "everyone": {
+      "id": "everyone",
+      "name": "Everyone",
+      "description": "Default group for all users",
+      "createdAt": "2026-01-13T11:39:04.722Z",
+      "isDefault": true
+    },
+    "admins": {
+      "id": "admins",
+      "name": "Admins",
+      "description": "Administrators with full access",
+      "createdAt": "2026-01-13T11:39:04.722Z",
+      "isDefault": true
+    }
+  },
+  "userGroups": {},
+  "permissions": {
+    "everyone": {
+      "voice-channels": true,
+      "text-channels": true,
+      "screen-share": true,
+      "youtube-bot": false,
+      "plex-bot": false,
+      "emby-bot": false,
+      "jellyfin-bot": false,
+      "chrome-bot": false,
+      "iptv-bot": false,
+      "spotify-bot": false,
+      "file-share": false
+    },
+    "admins": {
+      "voice-channels": true,
+      "text-channels": true,
+      "screen-share": true,
+      "youtube-bot": true,
+      "plex-bot": true,
+      "emby-bot": true,
+      "jellyfin-bot": true,
+      "chrome-bot": true,
+      "iptv-bot": true,
+      "spotify-bot": true,
+      "file-share": true,
+      "admin-panel": true
+    }
+  }
+}

@@ -272,6 +272,7 @@ router.get('/admin/game-together/status', authenticate, adminOnly, gameTogetherC
 router.post('/admin/game-together/enable', authenticate, adminOnly, gameTogetherController.setEnabled);
 router.post('/admin/game-together/start', authenticate, gameTogetherController.startSession);
 router.post('/admin/game-together/stop', authenticate, gameTogetherController.stopSession);
+router.get('/admin/game-together/sessions', authenticate, gameTogetherController.getSessions);
 router.get('/admin/game-together/session/:channelId', authenticate, gameTogetherController.getSession);
 router.post('/admin/game-together/join', authenticate, gameTogetherController.joinAsPlayer);
 router.post('/admin/game-together/leave', authenticate, gameTogetherController.leaveAsPlayer);

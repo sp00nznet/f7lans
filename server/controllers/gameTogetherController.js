@@ -106,6 +106,16 @@ const handleInput = async (req, res) => {
   }
 };
 
+// Get all active sessions
+const getSessions = async (req, res) => {
+  try {
+    const sessions = gameTogetherService.getAllSessions();
+    res.json({ sessions });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   initialize,
   getStatus,
@@ -113,6 +123,7 @@ module.exports = {
   startSession,
   stopSession,
   getSession,
+  getSessions,
   joinAsPlayer,
   leaveAsPlayer,
   handleInput

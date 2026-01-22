@@ -4992,7 +4992,7 @@ async function startGameTogetherAsHost() {
   try {
     showToast('Starting Game Together session...', 'info');
 
-    const response = await fetch(`${state.serverUrl}/api/game-together/start`, {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/start`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${state.token}`,
@@ -5043,7 +5043,7 @@ async function showGameTogetherJoinList() {
   `;
 
   try {
-    const response = await fetch(`${state.serverUrl}/api/game-together/sessions`, {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/sessions`, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
     const data = await response.json();
@@ -5080,7 +5080,7 @@ async function joinGameTogetherSession(hostUserId) {
   try {
     showToast('Joining Game Together session...', 'info');
 
-    const response = await fetch(`${state.serverUrl}/api/game-together/join`, {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/join`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${state.token}`,
@@ -5195,7 +5195,7 @@ async function leaveGameTogether() {
 
   if (state.gameTogether.active) {
     try {
-      await fetch(`${state.serverUrl}/api/game-together/leave`, {
+      await fetch(`${state.serverUrl}/api/admin/game-together/leave`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${state.token}`,
