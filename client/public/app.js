@@ -87,7 +87,8 @@ const state = {
 
 // Initialize application
 async function init() {
-  // Load settings from electron store
+  // Web client uses relative URLs (nginx proxies to backend)
+  // For Electron, load settings from electron store
   if (window.electronAPI) {
     state.settings = await window.electronAPI.getSettings();
     state.serverUrl = state.settings.serverUrl;
@@ -100,20 +101,24 @@ async function init() {
 
     // Set up IPC listeners
     setupIPCListeners();
-  }
 
-  // If we have saved servers, try to auto-connect to the first one
-  if (state.servers.length > 0) {
-    const firstServer = state.servers[0];
-    state.serverUrl = firstServer.url;
-    state.token = firstServer.token;
-    state.currentServerId = firstServer.id;
-    document.getElementById('serverUrl').value = firstServer.url;
-    tryAutoLogin();
-  } else if (state.token && state.serverUrl) {
-    // Legacy single server support
-    document.getElementById('serverUrl').value = state.serverUrl;
-    tryAutoLogin();
+    // If we have saved servers, try to auto-connect to the first one
+    if (state.servers.length > 0) {
+      const firstServer = state.servers[0];
+      state.serverUrl = firstServer.url;
+      state.token = firstServer.token;
+      state.currentServerId = firstServer.id;
+      document.getElementById('serverUrl').value = firstServer.url;
+      tryAutoLogin();
+    } else if (state.token && state.serverUrl) {
+      // Legacy single server support
+      document.getElementById('serverUrl').value = state.serverUrl;
+      tryAutoLogin();
+    }
+  } else {
+    // Web client - use relative URLs (empty string means current origin)
+    state.serverUrl = '';
+    document.getElementById('serverUrl').value = '';
   }
 
   // Set up form handler
@@ -1600,6 +1605,7 @@ async function openSettings() {
         <p style="color: var(--text-muted); font-size: 11px; margin-top: 8px;">Higher resolutions require more bandwidth and CPU. 4K/8K recommended only with fast connections.</p>
       </div>
 
+      ${window.electronAPI ? `
       <div class="settings-section">
         <h3>Behavior</h3>
         <div class="settings-row">
@@ -1611,6 +1617,7 @@ async function openSettings() {
           <input type="checkbox" ${state.settings.startMinimized ? 'checked' : ''} id="startMinimized">
         </div>
       </div>
+      ` : ''}
 
       <div class="settings-section">
         <h3>Account</h3>
@@ -1645,14 +1652,6 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openAdminBotModal('chrome')">Chrome</button>
           <button class="btn-secondary" onclick="openAdminBotModal('twitch')">Twitch</button>
           <button class="btn-secondary" onclick="openAdminBotModal('imagesearch')">Image Search</button>
-        </div>
-        <h4 style="margin-top: 16px; color: var(--text-muted);">Gaming Bots</h4>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button class="btn-secondary" onclick="openAdminBotModal('rpg')">RPG Bot</button>
-        </div>
-        <h4 style="margin-top: 16px; color: var(--text-muted);">Utility Bots</h4>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button class="btn-secondary" onclick="openAdminBotModal('activitystats')">Activity Stats</button>
         </div>
       </div>
       ` : ''}
@@ -1779,11 +1778,14 @@ async function saveSettings() {
     voiceActivated: document.getElementById('voiceMode').value === 'vad',
     pushToTalkKey: document.getElementById('pttKey').value,
     // Screen sharing settings
-    screenShareQuality: document.getElementById('screenShareQuality').value,
-    // Behavior settings
-    minimizeToTray: document.getElementById('minimizeToTray').checked,
-    startMinimized: document.getElementById('startMinimized').checked
+    screenShareQuality: document.getElementById('screenShareQuality').value
   };
+
+  // Electron-only behavior settings
+  if (window.electronAPI) {
+    newSettings.minimizeToTray = document.getElementById('minimizeToTray')?.checked || false;
+    newSettings.startMinimized = document.getElementById('startMinimized')?.checked || false;
+  }
 
   state.settings = { ...state.settings, ...newSettings };
 
@@ -4103,10 +4105,6 @@ function openBotsModal() {
             <span style="font-size: 32px;">🎮</span>
             <span>Game Together</span>
           </button>
-          <button class="bot-tile" onclick="openUserBotModal('rpg')">
-            <span style="font-size: 32px;">⚔️</span>
-            <span>RPG Bot</span>
-          </button>
         </div>
       </div>
 
@@ -4120,10 +4118,6 @@ function openBotsModal() {
           <button class="bot-tile" onclick="openUserBotModal('imagesearch')">
             <span style="font-size: 32px;">🖼️</span>
             <span>Image Search</span>
-          </button>
-          <button class="bot-tile" onclick="openUserBotModal('activitystats')">
-            <span style="font-size: 32px;">📊</span>
-            <span>Activity Stats</span>
           </button>
         </div>
       </div>
@@ -4202,12 +4196,6 @@ async function openUserBotModal(botType) {
     case 'imagesearch':
       openImageSearchBotModal();
       break;
-    case 'rpg':
-      openRPGBotModal();
-      break;
-    case 'activitystats':
-      openActivityStatsBotModal();
-      break;
     default:
       showToast('Bot not yet implemented', 'warning');
   }
@@ -4244,12 +4232,6 @@ function openAdminBotModal(botType) {
       break;
     case 'imagesearch':
       openImageSearchBotModal();
-      break;
-    case 'rpg':
-      openRPGBotModal();
-      break;
-    case 'activitystats':
-      openActivityStatsBotModal();
       break;
     default:
       showToast('Bot admin panel not yet implemented', 'warning');
@@ -4506,148 +4488,6 @@ async function searchImages() {
 }
 
 // ==================== RPG Bot Modal ====================
-async function openRPGBotModal() {
-  const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modalContent');
-
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>RPG Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="rpgBotContent">Loading...</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal()">Close</button>
-    </div>
-  `;
-
-  overlay.classList.add('active');
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/rpg-bot/status`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    renderRPGBotContent(data);
-  } catch (error) {
-    document.getElementById('rpgBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
-  }
-}
-
-function renderRPGBotContent(data) {
-  const { enabled, activeGames, playerCount } = data;
-  document.getElementById('rpgBotContent').innerHTML = `
-    <div class="settings-section" style="margin-bottom: 16px;">
-      <h3>Bot Status</h3>
-      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
-        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
-        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleRPGBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
-      </div>
-      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Play text-based RPG adventures in channels with dice rolling, character sheets, and more.</p>
-    </div>
-
-    ${enabled ? `
-    <div class="settings-section">
-      <h3>Stats</h3>
-      <div style="margin-top: 12px;">
-        <p style="color: var(--text-secondary);">Active Games: ${activeGames || 0}</p>
-        <p style="color: var(--text-secondary);">Total Players: ${playerCount || 0}</p>
-      </div>
-    </div>
-    ` : ''}
-  `;
-}
-
-async function toggleRPGBot(enabled) {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/rpg-bot/enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ enabled })
-    });
-    if (!response.ok) throw new Error((await response.json()).error);
-    showToast(enabled ? 'RPG bot enabled' : 'RPG bot disabled', 'success');
-    openRPGBotModal();
-  } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
-  }
-}
-
-// ==================== Activity Stats Bot Modal ====================
-async function openActivityStatsBotModal() {
-  const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modalContent');
-
-  modal.innerHTML = `
-    <div class="modal-header">
-      <h2>Activity Stats Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="activityStatsBotContent">Loading...</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal()">Close</button>
-    </div>
-  `;
-
-  overlay.classList.add('active');
-
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/activity-bot/status`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    renderActivityStatsBotContent(data);
-  } catch (error) {
-    document.getElementById('activityStatsBotContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
-  }
-}
-
-function renderActivityStatsBotContent(data) {
-  const { enabled, trackedUsers, totalMessages, totalVoiceMinutes } = data;
-  document.getElementById('activityStatsBotContent').innerHTML = `
-    <div class="settings-section" style="margin-bottom: 16px;">
-      <h3>Bot Status</h3>
-      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
-        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
-        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleActivityStatsBot(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
-      </div>
-      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Track user activity, message counts, voice time, and generate leaderboards.</p>
-    </div>
-
-    ${enabled ? `
-    <div class="settings-section">
-      <h3>Server Stats</h3>
-      <div style="margin-top: 12px;">
-        <p style="color: var(--text-secondary);">Tracked Users: ${trackedUsers || 0}</p>
-        <p style="color: var(--text-secondary);">Total Messages: ${totalMessages || 0}</p>
-        <p style="color: var(--text-secondary);">Total Voice Time: ${Math.round((totalVoiceMinutes || 0) / 60)} hours</p>
-      </div>
-    </div>
-    ` : ''}
-  `;
-}
-
-async function toggleActivityStatsBot(enabled) {
-  try {
-    const response = await fetch(`${state.serverUrl}/api/admin/activity-bot/enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ enabled })
-    });
-    if (!response.ok) throw new Error((await response.json()).error);
-    showToast(enabled ? 'Activity Stats bot enabled' : 'Activity Stats bot disabled', 'success');
-    openActivityStatsBotModal();
-  } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
-  }
-}
-
 function disconnect() {
   if (state.socket) {
     state.socket.disconnect();

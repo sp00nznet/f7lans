@@ -18,8 +18,6 @@ const spotifyBotController = require('../controllers/spotifyBotController');
 const groupController = require('../controllers/groupController');
 const fileShareController = require('../controllers/fileShareController');
 const activityController = require('../controllers/activityController');
-const activityStatsBotController = require('../controllers/activityStatsBotController');
-const rpgBotController = require('../controllers/rpgBotController');
 const socialAccountsController = require('../controllers/socialAccountsController');
 const steamAuthController = require('../controllers/steamAuthController');
 const serverSettingsController = require('../controllers/serverSettingsController');
@@ -329,26 +327,6 @@ router.get('/activity/history', authenticate, activityController.getMyHistory);
 router.get('/activity/users/:userId/stats', authenticate, activityController.getUserStats);
 router.get('/activity/users/:userId/common', authenticate, activityController.getCommonActivities);
 router.get('/admin/activity/stats', authenticate, adminOnly, activityController.getServerStats);
-
-// ===== Activity Stats Bot Routes =====
-router.get('/admin/activity-bot/status', authenticate, adminOnly, activityStatsBotController.getStatus);
-router.post('/admin/activity-bot/enable', authenticate, adminOnly, activityStatsBotController.setEnabled);
-router.post('/admin/activity-bot/start', authenticate, activityStatsBotController.startStats);
-router.post('/admin/activity-bot/stop', authenticate, activityStatsBotController.stopStats);
-router.get('/admin/activity-bot/current-stats', authenticate, activityStatsBotController.getStats);
-router.get('/admin/activity-bot/leaderboard', authenticate, activityStatsBotController.getLeaderboard);
-router.get('/admin/activity-bot/game/:gameName', authenticate, activityStatsBotController.getGameStats);
-
-// ===== RPG Bot Routes =====
-router.get('/admin/rpg-bot/status', authenticate, adminOnly, rpgBotController.getStatus);
-router.post('/admin/rpg-bot/enable', authenticate, adminOnly, rpgBotController.setEnabled);
-router.post('/rpg/campaign', authenticate, rpgBotController.createCampaign);
-router.post('/rpg/join', authenticate, rpgBotController.joinCampaign);
-router.post('/rpg/start', authenticate, rpgBotController.startAdventure);
-router.post('/rpg/action', authenticate, rpgBotController.takeAction);
-router.get('/rpg/campaign/:channelId', authenticate, rpgBotController.getCampaign);
-router.post('/rpg/end', authenticate, rpgBotController.endCampaign);
-router.post('/rpg/roll', authenticate, rpgBotController.rollDice);
 
 // ===== Social Accounts Routes =====
 router.get('/social/accounts', authenticate, socialAccountsController.getLinkedAccounts);
