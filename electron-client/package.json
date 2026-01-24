@@ -2,6 +2,7 @@
   "name": "f7lans-client",
   "version": "1.0.0",
   "description": "F7Lans Desktop Client - Gaming Community Platform",
+  "homepage": "https://github.com/sp00nznet/f7lans",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -50,7 +51,8 @@
     "linux": {
       "target": ["AppImage", "deb"],
       "icon": "assets/icon.png",
-      "category": "Network"
+      "category": "Network",
+      "maintainer": "F7Lans <admin@f7lans.com>"
     },
     "nsis": {
       "oneClick": false,
@@ -67,6 +69,9 @@
     "electron-builder": "^24.9.1",
     "fs-extra": "^11.2.0"
   },
-  "author": "F7Lans",
+  "author": {
+    "name": "F7Lans",
+    "email": "admin@f7lans.com"
+  },
   "license": "MIT"
 }

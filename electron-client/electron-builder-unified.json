@@ -39,7 +39,8 @@
   "linux": {
     "target": ["AppImage", "deb", "tar.gz"],
     "icon": "assets/icon.png",
-    "category": "Network"
+    "category": "Network",
+    "maintainer": "F7Lans <admin@f7lans.com>"
   },
   "nsis": {
     "oneClick": false,
@@ -49,7 +50,7 @@
     "shortcutName": "F7Lans",
     "include": "installer.nsh"
   },
-  "env": {
-    "F7LANS_EMBEDDED_SERVER": "true"
+  "extraMetadata": {
+    "embeddedServer": true
   }
 }
