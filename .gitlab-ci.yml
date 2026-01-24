@@ -96,8 +96,8 @@ build:docker-server:
     - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
-    # Build server image (using vfs storage driver - no fuse required)
-    - buildah --storage-driver=vfs bud -t f7lans-server:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.server .
+    # Build server image (using vfs storage driver and chroot isolation - no special permissions required)
+    - buildah --storage-driver=vfs bud --isolation=chroot -t f7lans-server:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.server .
     - buildah --storage-driver=vfs tag f7lans-server:${CI_COMMIT_SHORT_SHA} f7lans-server:latest
     # Push to registry if configured
     - |
@@ -132,7 +132,7 @@ build:docker-webclient:
     - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
-    - buildah --storage-driver=vfs bud -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
+    - buildah --storage-driver=vfs bud --isolation=chroot -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
     - buildah --storage-driver=vfs tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} f7lans-webclient:latest
     - |
       if [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ]; then
