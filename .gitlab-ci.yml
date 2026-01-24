@@ -84,36 +84,34 @@ build:windows-client-standalone:
     - if: $CI_PIPELINE_SOURCE == "web"
 
 # ============================================
-# Docker Container Build (Server)
+# Docker Container Build (Server) - Using Kaniko
+# Kaniko builds containers without Docker daemon
 # ============================================
 build:docker-server:
   stage: build
-  image: docker:24
+  image:
+    name: gcr.io/kaniko-project/executor:v1.19.2-debug
+    entrypoint: [""]
   tags:
     - debian
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_DRIVER: overlay2
-  before_script:
-    - docker info
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
   script:
-    # Build the server container
-    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile.server .
-    - docker tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA $DOCKER_IMAGE:latest
-    # Push to registry if available
+    # Create Kaniko config for registry auth
+    - mkdir -p /kaniko/.docker
     - |
       if [ -n "$CI_REGISTRY" ]; then
-        docker tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-        docker tag $DOCKER_IMAGE:latest $CI_REGISTRY_IMAGE:latest
-        docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-        docker push $CI_REGISTRY_IMAGE:latest
+        echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
       fi
-    # Save image as artifact
-    - docker save $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA | gzip > f7lans-server-$CI_COMMIT_SHORT_SHA.tar.gz
+    # Build and push server image
+    - |
+      /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "${CI_PROJECT_DIR}/docker/Dockerfile.server" \
+        --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
+        --destination "${CI_REGISTRY_IMAGE}:latest" \
+        --tar-path "f7lans-server-${CI_COMMIT_SHORT_SHA}.tar" \
+        --cache=true \
+        --cache-ttl=168h
+    - gzip f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-server-docker-${CI_COMMIT_SHORT_SHA}"
     paths:
@@ -124,31 +122,30 @@ build:docker-server:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "web"
 
-# Build web client container
+# Build web client container using Kaniko
 build:docker-webclient:
   stage: build
-  image: docker:24
+  image:
+    name: gcr.io/kaniko-project/executor:v1.19.2-debug
+    entrypoint: [""]
   tags:
     - debian
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_HOST: tcp://docker:2376
-  before_script:
-    - docker info
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
   script:
-    - docker build -t f7lans-webclient:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile.webclient .
-    - docker tag f7lans-webclient:$CI_COMMIT_SHORT_SHA f7lans-webclient:latest
+    - mkdir -p /kaniko/.docker
     - |
       if [ -n "$CI_REGISTRY" ]; then
-        docker tag f7lans-webclient:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE/webclient:$CI_COMMIT_SHORT_SHA
-        docker tag f7lans-webclient:latest $CI_REGISTRY_IMAGE/webclient:latest
-        docker push $CI_REGISTRY_IMAGE/webclient:$CI_COMMIT_SHORT_SHA
-        docker push $CI_REGISTRY_IMAGE/webclient:latest
+        echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
       fi
-    - docker save f7lans-webclient:$CI_COMMIT_SHORT_SHA | gzip > f7lans-webclient-$CI_COMMIT_SHORT_SHA.tar.gz
+    - |
+      /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "${CI_PROJECT_DIR}/docker/Dockerfile.webclient" \
+        --destination "${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}" \
+        --destination "${CI_REGISTRY_IMAGE}/webclient:latest" \
+        --tar-path "f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar" \
+        --cache=true \
+        --cache-ttl=168h
+    - gzip f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-webclient-docker-${CI_COMMIT_SHORT_SHA}"
     paths:
