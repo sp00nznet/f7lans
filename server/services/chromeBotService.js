@@ -64,11 +64,15 @@ class ChromeBotService {
       startedBy
     };
 
-    this.io.to(`channel:${channelId}`).emit('chrome:session-started', {
+    const room = this.io.sockets.adapter.rooms.get(`voice:${channelId}`);
+    const clientCount = room ? room.size : 0;
+    console.log(`[ChromeBot] Emitting chrome:session-started to voice:${channelId} (${clientCount} clients in room)`);
+    this.io.to(`voice:${channelId}`).emit('chrome:session-started', {
       channelId,
       url: initialUrl,
       controller: startedBy
     });
+    console.log(`[ChromeBot] Event emitted successfully`);
 
     return {
       channelId,
@@ -97,7 +101,7 @@ class ChromeBotService {
     session.historyIndex = session.history.length - 1;
     session.lastAction = { type: 'navigate', by: userId, url, time: Date.now() };
 
-    this.io.to(`channel:${channelId}`).emit('chrome:navigate', {
+    this.io.to(`voice:${channelId}`).emit('chrome:navigate', {
       channelId,
       url,
       navigatedBy: userId
@@ -118,7 +122,7 @@ class ChromeBotService {
       session.url = session.history[session.historyIndex];
       session.lastAction = { type: 'back', by: userId, time: Date.now() };
 
-      this.io.to(`channel:${channelId}`).emit('chrome:navigate', {
+      this.io.to(`voice:${channelId}`).emit('chrome:navigate', {
         channelId,
         url: session.url,
         navigatedBy: userId,
@@ -143,7 +147,7 @@ class ChromeBotService {
       session.url = session.history[session.historyIndex];
       session.lastAction = { type: 'forward', by: userId, time: Date.now() };
 
-      this.io.to(`channel:${channelId}`).emit('chrome:navigate', {
+      this.io.to(`voice:${channelId}`).emit('chrome:navigate', {
         channelId,
         url: session.url,
         navigatedBy: userId,
@@ -165,7 +169,7 @@ class ChromeBotService {
 
     session.lastAction = { type: 'refresh', by: userId, time: Date.now() };
 
-    this.io.to(`channel:${channelId}`).emit('chrome:refresh', {
+    this.io.to(`voice:${channelId}`).emit('chrome:refresh', {
       channelId,
       refreshedBy: userId
     });
@@ -182,7 +186,7 @@ class ChromeBotService {
 
     session.lastAction = { type: 'input', by: userId, data: inputData, time: Date.now() };
 
-    this.io.to(`channel:${channelId}`).emit('chrome:input', {
+    this.io.to(`voice:${channelId}`).emit('chrome:input', {
       channelId,
       inputData,
       sentBy: userId
@@ -201,7 +205,7 @@ class ChromeBotService {
     session.controller = toUserId;
     session.lastAction = { type: 'transfer', from: fromUserId, to: toUserId, time: Date.now() };
 
-    this.io.to(`channel:${channelId}`).emit('chrome:control-transferred', {
+    this.io.to(`voice:${channelId}`).emit('chrome:control-transferred', {
       channelId,
       newController: toUserId,
       previousController: fromUserId
@@ -221,7 +225,7 @@ class ChromeBotService {
       session.participants.push(userId);
     }
 
-    this.io.to(`channel:${channelId}`).emit('chrome:participant-joined', {
+    this.io.to(`voice:${channelId}`).emit('chrome:participant-joined', {
       channelId,
       userId,
       participants: session.participants
@@ -246,14 +250,14 @@ class ChromeBotService {
     // If controller leaves, transfer to next participant
     if (session.controller === userId && session.participants.length > 0) {
       session.controller = session.participants[0];
-      this.io.to(`channel:${channelId}`).emit('chrome:control-transferred', {
+      this.io.to(`voice:${channelId}`).emit('chrome:control-transferred', {
         channelId,
         newController: session.controller,
         reason: 'Previous controller left'
       });
     }
 
-    this.io.to(`channel:${channelId}`).emit('chrome:participant-left', {
+    this.io.to(`voice:${channelId}`).emit('chrome:participant-left', {
       channelId,
       userId,
       participants: session.participants
@@ -271,7 +275,7 @@ class ChromeBotService {
   stopSession(channelId) {
     if (this.activeSessions[channelId]) {
       delete this.activeSessions[channelId];
-      this.io.to(`channel:${channelId}`).emit('chrome:session-ended', { channelId });
+      this.io.to(`voice:${channelId}`).emit('chrome:session-ended', { channelId });
     }
     return { stopped: true };
   }
@@ -279,7 +283,7 @@ class ChromeBotService {
   // Stop all sessions
   stopAll() {
     for (const channelId in this.activeSessions) {
-      this.io.to(`channel:${channelId}`).emit('chrome:session-ended', { channelId });
+      this.io.to(`voice:${channelId}`).emit('chrome:session-ended', { channelId });
     }
     this.activeSessions = {};
   }

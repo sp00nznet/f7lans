@@ -3,6 +3,8 @@
  * Streams media from Jellyfin Media Server to voice channels
  */
 
+const BotSettings = require('../models/BotSettings');
+
 class JellyfinBotService {
   constructor(io) {
     this.io = io;
@@ -13,13 +15,58 @@ class JellyfinBotService {
     this.userId = null;
     this.serverInfo = null;
     this.activeStreams = {};
+
+    this.loadSavedSettings();
   }
 
-  setEnabled(enabled) {
+  async loadSavedSettings() {
+    try {
+      const settings = await BotSettings.findOne({ botType: 'jellyfin' });
+      if (settings) {
+        this.enabled = settings.enabled;
+        if (settings.config?.serverUrl && settings.config?.apiKey) {
+          console.log('[Jellyfin] Found saved settings, attempting to reconnect...');
+          try {
+            await this.connect(settings.config.serverUrl, settings.config.apiKey);
+            console.log('[Jellyfin] Reconnected to server:', this.serverInfo?.name);
+          } catch (err) {
+            console.error('[Jellyfin] Failed to reconnect:', err.message);
+            this.serverUrl = settings.config.serverUrl;
+            this.apiKey = settings.config.apiKey;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Jellyfin] Failed to load saved settings:', err.message);
+    }
+  }
+
+  async saveSettings() {
+    try {
+      await BotSettings.findOneAndUpdate(
+        { botType: 'jellyfin' },
+        {
+          botType: 'jellyfin',
+          enabled: this.enabled,
+          config: {
+            serverUrl: this.serverUrl,
+            apiKey: this.apiKey
+          }
+        },
+        { upsert: true, new: true }
+      );
+      console.log('[Jellyfin] Settings saved to database');
+    } catch (err) {
+      console.error('[Jellyfin] Failed to save settings:', err.message);
+    }
+  }
+
+  async setEnabled(enabled) {
     this.enabled = enabled;
     if (!enabled) {
       this.stopAll();
     }
+    await this.saveSettings();
     return { enabled: this.enabled };
   }
 
@@ -55,6 +102,9 @@ class JellyfinBotService {
           this.userId = users[0].Id;
         }
       }
+
+      // Save settings after successful connection
+      await this.saveSettings();
 
       return {
         connected: true,
@@ -147,11 +197,17 @@ class JellyfinBotService {
     return `${this.serverUrl}/Audio/${itemId}/universal?api_key=${this.apiKey}&AudioCodec=mp3`;
   }
 
+  // Get proxied stream URL for browser playback (bypasses CORS)
+  getProxiedStreamUrl(directUrl) {
+    return `/api/stream/proxy?url=${encodeURIComponent(directUrl)}`;
+  }
+
   getThumbUrl(itemId) {
     if (!this.connected || !itemId) {
       return null;
     }
-    return `${this.serverUrl}/Items/${itemId}/Images/Primary?api_key=${this.apiKey}`;
+    const directUrl = `${this.serverUrl}/Items/${itemId}/Images/Primary?api_key=${this.apiKey}`;
+    return this.getProxiedStreamUrl(directUrl);
   }
 
   async play(channelId, itemId, requestedBy) {
@@ -164,7 +220,10 @@ class JellyfinBotService {
     }
 
     const mediaInfo = await this.getMediaInfo(itemId);
-    const streamUrl = await this.getStreamUrl(itemId);
+    const directStreamUrl = await this.getStreamUrl(itemId);
+
+    // Use proxied URL for browser playback (bypasses CORS)
+    const streamUrl = this.getProxiedStreamUrl(directStreamUrl);
 
     this.activeStreams[channelId] = {
       itemId,
@@ -177,13 +236,16 @@ class JellyfinBotService {
       requestedBy
     };
 
-    this.io.to(`channel:${channelId}`).emit('jellyfin:play', {
+    // Emit media:playing for client compatibility
+    this.io.to(`voice:${channelId}`).emit('media:playing', {
+      source: 'Jellyfin',
       channelId,
       title: mediaInfo.title,
       artist: mediaInfo.artist,
       type: mediaInfo.type,
       streamUrl,
-      duration: mediaInfo.duration
+      duration: mediaInfo.duration,
+      thumbnail: null
     });
 
     return {
@@ -198,7 +260,7 @@ class JellyfinBotService {
     if (channelId) {
       if (this.activeStreams[channelId]) {
         delete this.activeStreams[channelId];
-        this.io.to(`channel:${channelId}`).emit('jellyfin:stop', { channelId });
+        this.io.to(`voice:${channelId}`).emit('media:stopped', { source: 'Jellyfin', channelId });
       }
     } else {
       this.stopAll();
@@ -208,7 +270,7 @@ class JellyfinBotService {
 
   stopAll() {
     for (const channelId in this.activeStreams) {
-      this.io.to(`channel:${channelId}`).emit('jellyfin:stop', { channelId });
+      this.io.to(`voice:${channelId}`).emit('media:stopped', { source: 'Jellyfin', channelId });
     }
     this.activeStreams = {};
   }

@@ -37,11 +37,14 @@ const configure = async (req, res) => {
     if (!iptvBotService) {
       return res.status(503).json({ error: 'IPTV bot service not initialized' });
     }
-    const { playlistUrl, epgUrl } = req.body;
-    if (!playlistUrl) {
-      return res.status(400).json({ error: 'Playlist URL is required' });
+
+    // Handle file upload
+    if (!req.file) {
+      return res.status(400).json({ error: 'M3U playlist file is required' });
     }
-    const result = await iptvBotService.configure(playlistUrl, epgUrl);
+
+    const epgUrl = req.body.epgUrl || null;
+    const result = await iptvBotService.configureFromFile(req.file.path, epgUrl);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -193,7 +193,7 @@ body {
 }
 
 .main-app.voice-active {
-  grid-template-columns: 72px 240px 1fr 320px;
+  grid-template-columns: 72px 240px 1fr 600px;
 }
 
 /* Server List */
@@ -846,6 +846,33 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: white;
+}
+
+/* Voice panel fullscreen styles */
+.voice-panel:fullscreen {
+  background: var(--bg-darkest);
+  padding: 20px;
+}
+
+.voice-panel:fullscreen .voice-panel-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px);
+}
+
+.voice-panel:fullscreen .video-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)) !important;
+  gap: 16px !important;
+  flex: 1;
+  max-height: none !important;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.voice-panel:fullscreen .video-tile {
+  min-height: 300px;
+  max-height: 50vh;
 }
 
 .voice-participants h4 {

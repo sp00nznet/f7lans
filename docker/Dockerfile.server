@@ -4,8 +4,8 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
-# Install dependencies for native modules and health check
-RUN apk add --no-cache python3 make g++ wget
+# Install dependencies for native modules, health check, and uinput support
+RUN apk add --no-cache python3 make g++ wget linux-headers eudev
 
 # Copy package files
 COPY package.json ./

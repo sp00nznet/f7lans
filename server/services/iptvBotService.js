@@ -5,6 +5,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const BotSettings = require('../models/BotSettings');
 
 class IPTVBotService {
   constructor(io) {
@@ -18,17 +19,72 @@ class IPTVBotService {
     this.activeStreams = {}; // channelId -> { iptvChannel, title }
     this.recordings = []; // { id, channelName, programTitle, startTime, endTime, requestedBy, taggedUsers }
     this.scheduledRecordings = []; // Future recordings
+
+    // Load saved settings on startup
+    this.loadSavedSettings();
   }
 
-  setEnabled(enabled) {
+  // Load settings from MongoDB
+  async loadSavedSettings() {
+    try {
+      const settings = await BotSettings.findOne({ botType: 'iptv' });
+      if (settings) {
+        this.enabled = settings.enabled;
+        if (settings.config) {
+          const { playlistUrl, epgUrl, channels } = settings.config;
+          if (channels && channels.length > 0) {
+            this.channels = channels;
+            this.playlistUrl = playlistUrl;
+            this.epgUrl = epgUrl;
+            this.configured = true;
+            console.log(`[IPTV] Loaded saved settings: ${channels.length} channels`);
+
+            // Reload EPG data if URL is available
+            if (epgUrl) {
+              this.loadEPG(epgUrl).catch(err => {
+                console.error('[IPTV] Failed to reload EPG:', err.message);
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[IPTV] Failed to load saved settings:', err.message);
+    }
+  }
+
+  // Save settings to MongoDB
+  async saveSettings() {
+    try {
+      await BotSettings.findOneAndUpdate(
+        { botType: 'iptv' },
+        {
+          botType: 'iptv',
+          enabled: this.enabled,
+          config: {
+            playlistUrl: this.playlistUrl,
+            epgUrl: this.epgUrl,
+            channels: this.channels
+          }
+        },
+        { upsert: true, new: true }
+      );
+      console.log('[IPTV] Settings saved to database');
+    } catch (err) {
+      console.error('[IPTV] Failed to save settings:', err.message);
+    }
+  }
+
+  async setEnabled(enabled) {
     this.enabled = enabled;
     if (!enabled) {
       this.stopAll();
     }
+    await this.saveSettings();
     return { enabled: this.enabled };
   }
 
-  // Configure IPTV with M3U playlist and EPG
+  // Configure IPTV with M3U playlist and EPG (from URL)
   async configure(playlistUrl, epgUrl) {
     try {
       await this.loadPlaylist(playlistUrl);
@@ -41,6 +97,9 @@ class IPTVBotService {
       this.epgUrl = epgUrl;
       this.configured = true;
 
+      // Save settings to database
+      await this.saveSettings();
+
       return {
         configured: true,
         channelCount: this.channels.length,
@@ -51,7 +110,34 @@ class IPTVBotService {
     }
   }
 
-  // Load M3U playlist
+  // Configure IPTV from uploaded file
+  async configureFromFile(filePath, epgUrl) {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      this.channels = this.parseM3U(content);
+
+      if (epgUrl) {
+        await this.loadEPG(epgUrl);
+      }
+
+      this.playlistUrl = filePath; // Store file path instead of URL
+      this.epgUrl = epgUrl;
+      this.configured = true;
+
+      // Save settings to database
+      await this.saveSettings();
+
+      return {
+        configured: true,
+        channelCount: this.channels.length,
+        hasEPG: !!epgUrl
+      };
+    } catch (error) {
+      throw new Error('Failed to configure IPTV from file: ' + error.message);
+    }
+  }
+
+  // Load M3U playlist from URL
   async loadPlaylist(url) {
     const fetch = (await import('node-fetch')).default;
 
@@ -249,8 +335,9 @@ class IPTVBotService {
       requestedBy
     };
 
-    this.io.to(`channel:${voiceChannelId}`).emit('iptv:play', {
+    this.io.to(`voice:${voiceChannelId}`).emit('iptv:playing', {
       channelId: voiceChannelId,
+      channelName: channel.name,
       iptvChannel: channel,
       currentProgram,
       streamUrl: channel.url
@@ -273,7 +360,7 @@ class IPTVBotService {
     if (voiceChannelId) {
       if (this.activeStreams[voiceChannelId]) {
         delete this.activeStreams[voiceChannelId];
-        this.io.to(`channel:${voiceChannelId}`).emit('iptv:stop', { channelId: voiceChannelId });
+        this.io.to(`voice:${voiceChannelId}`).emit('iptv:stopped', { channelId: voiceChannelId });
       }
     } else {
       this.stopAll();
@@ -283,7 +370,7 @@ class IPTVBotService {
 
   stopAll() {
     for (const channelId in this.activeStreams) {
-      this.io.to(`channel:${channelId}`).emit('iptv:stop', { channelId });
+      this.io.to(`voice:${channelId}`).emit('iptv:stopped', { channelId });
     }
     this.activeStreams = {};
   }

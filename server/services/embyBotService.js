@@ -3,6 +3,8 @@
  * Streams media from Emby Media Server to voice channels
  */
 
+const BotSettings = require('../models/BotSettings');
+
 class EmbyBotService {
   constructor(io) {
     this.io = io;
@@ -13,13 +15,58 @@ class EmbyBotService {
     this.userId = null;
     this.serverInfo = null;
     this.activeStreams = {}; // channelId -> { itemId, title, playing, startTime }
+
+    this.loadSavedSettings();
   }
 
-  setEnabled(enabled) {
+  async loadSavedSettings() {
+    try {
+      const settings = await BotSettings.findOne({ botType: 'emby' });
+      if (settings) {
+        this.enabled = settings.enabled;
+        if (settings.config?.serverUrl && settings.config?.apiKey) {
+          console.log('[Emby] Found saved settings, attempting to reconnect...');
+          try {
+            await this.connect(settings.config.serverUrl, settings.config.apiKey);
+            console.log('[Emby] Reconnected to server:', this.serverInfo?.name);
+          } catch (err) {
+            console.error('[Emby] Failed to reconnect:', err.message);
+            this.serverUrl = settings.config.serverUrl;
+            this.apiKey = settings.config.apiKey;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Emby] Failed to load saved settings:', err.message);
+    }
+  }
+
+  async saveSettings() {
+    try {
+      await BotSettings.findOneAndUpdate(
+        { botType: 'emby' },
+        {
+          botType: 'emby',
+          enabled: this.enabled,
+          config: {
+            serverUrl: this.serverUrl,
+            apiKey: this.apiKey
+          }
+        },
+        { upsert: true, new: true }
+      );
+      console.log('[Emby] Settings saved to database');
+    } catch (err) {
+      console.error('[Emby] Failed to save settings:', err.message);
+    }
+  }
+
+  async setEnabled(enabled) {
     this.enabled = enabled;
     if (!enabled) {
       this.stopAll();
     }
+    await this.saveSettings();
     return { enabled: this.enabled };
   }
 
@@ -60,6 +107,9 @@ class EmbyBotService {
           this.userId = users[0].Id;
         }
       }
+
+      // Save settings after successful connection
+      await this.saveSettings();
 
       return {
         connected: true,
@@ -153,11 +203,17 @@ class EmbyBotService {
     return `${this.serverUrl}/Audio/${itemId}/universal?api_key=${this.apiKey}&AudioCodec=mp3`;
   }
 
+  // Get proxied stream URL for browser playback (bypasses CORS)
+  getProxiedStreamUrl(directUrl) {
+    return `/api/stream/proxy?url=${encodeURIComponent(directUrl)}`;
+  }
+
   getThumbUrl(itemId) {
     if (!this.connected || !itemId) {
       return null;
     }
-    return `${this.serverUrl}/Items/${itemId}/Images/Primary?api_key=${this.apiKey}`;
+    const directUrl = `${this.serverUrl}/Items/${itemId}/Images/Primary?api_key=${this.apiKey}`;
+    return this.getProxiedStreamUrl(directUrl);
   }
 
   async play(channelId, itemId, requestedBy) {
@@ -170,7 +226,10 @@ class EmbyBotService {
     }
 
     const mediaInfo = await this.getMediaInfo(itemId);
-    const streamUrl = await this.getStreamUrl(itemId);
+    const directStreamUrl = await this.getStreamUrl(itemId);
+
+    // Use proxied URL for browser playback (bypasses CORS)
+    const streamUrl = this.getProxiedStreamUrl(directStreamUrl);
 
     this.activeStreams[channelId] = {
       itemId,
@@ -183,13 +242,16 @@ class EmbyBotService {
       requestedBy
     };
 
-    this.io.to(`channel:${channelId}`).emit('emby:play', {
+    // Emit media:playing for client compatibility
+    this.io.to(`voice:${channelId}`).emit('media:playing', {
+      source: 'Emby',
       channelId,
       title: mediaInfo.title,
       artist: mediaInfo.artist,
       type: mediaInfo.type,
       streamUrl,
-      duration: mediaInfo.duration
+      duration: mediaInfo.duration,
+      thumbnail: null
     });
 
     return {
@@ -204,7 +266,7 @@ class EmbyBotService {
     if (channelId) {
       if (this.activeStreams[channelId]) {
         delete this.activeStreams[channelId];
-        this.io.to(`channel:${channelId}`).emit('emby:stop', { channelId });
+        this.io.to(`voice:${channelId}`).emit('media:stopped', { source: 'Emby', channelId });
       }
     } else {
       this.stopAll();
@@ -214,7 +276,7 @@ class EmbyBotService {
 
   stopAll() {
     for (const channelId in this.activeStreams) {
-      this.io.to(`channel:${channelId}`).emit('emby:stop', { channelId });
+      this.io.to(`voice:${channelId}`).emit('media:stopped', { source: 'Emby', channelId });
     }
     this.activeStreams = {};
   }

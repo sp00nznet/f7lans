@@ -270,9 +270,15 @@ async function init() {
       tryAutoLogin();
     }
   } else {
-    // Web client - use relative URLs (empty string means current origin)
-    state.serverUrl = '';
-    document.getElementById('serverUrl').value = '';
+    // Web client - detect if running on different port than API
+    // In development, client is on 3000, API is on 3001
+    if (window.location.port === '3000') {
+      state.serverUrl = `${window.location.protocol}//${window.location.hostname}:3001`;
+    } else {
+      // Production or same-origin: use relative URLs
+      state.serverUrl = '';
+    }
+    document.getElementById('serverUrl').value = state.serverUrl;
   }
 
   // Set up form handler
@@ -567,7 +573,23 @@ function connectSocket() {
   // IPTV bot events
   state.socket.on('iptv:playing', (data) => {
     console.log('[IPTV] Now playing:', data);
-    addBotVideoToGrid('iptv', data.channelName || 'Live TV', data.streamUrl, null);
+    console.log('[IPTV] Original stream URL:', data.streamUrl);
+
+    // Try to get HLS version of the stream (many providers support .m3u8 suffix)
+    let streamUrl = data.streamUrl;
+    if (!streamUrl.includes('.m3u8')) {
+      // Remove any existing extension and add .m3u8 for HLS
+      streamUrl = streamUrl.replace(/\.[^/.]+$/, '') + '.m3u8';
+      // If no extension was present, just append
+      if (!streamUrl.endsWith('.m3u8')) {
+        streamUrl = data.streamUrl + '.m3u8';
+      }
+    }
+
+    // Proxy the stream through our server to bypass CORS
+    const proxyUrl = `${state.serverUrl}/api/stream/proxy?url=${encodeURIComponent(streamUrl)}`;
+    console.log('[IPTV] Proxy URL (HLS):', proxyUrl);
+    addBotVideoToGrid('iptv', data.channelName || 'Live TV', proxyUrl, null);
     showToast(`Now watching: ${data.channelName || 'Live TV'}`, 'success');
   });
 
@@ -578,23 +600,44 @@ function connectSocket() {
   });
 
   // Chrome bot events
-  state.socket.on('chrome:streaming', (data) => {
-    console.log('[Chrome] Streaming:', data);
-    addBotVideoToGrid('chrome', 'Shared Browser', data.streamUrl, null);
-    showToast('Browser stream started', 'success');
+  state.socket.on('chrome:session-started', (data) => {
+    console.log('[Chrome] Session started event received:', data);
+    console.log('[Chrome] Current voice state - inVoice:', state.inVoice, 'voiceChannel:', state.voiceChannel?._id);
+    addBotVideoToGrid('chrome', `Shared Browser: ${data.url}`, data.url, null);
+    showToast('Browser session started', 'success');
   });
 
-  state.socket.on('chrome:stopped', (data) => {
-    console.log('[Chrome] Stopped');
+  state.socket.on('chrome:navigate', (data) => {
+    console.log('[Chrome] Navigate:', data);
+    // Update the iframe with new URL
+    addBotVideoToGrid('chrome', `Shared Browser: ${data.url}`, data.url, null);
+  });
+
+  state.socket.on('chrome:session-ended', (data) => {
+    console.log('[Chrome] Session ended event received:', data);
+    console.log('[Chrome] Removing chrome tile from grid');
     removeBotVideoFromGrid('chrome');
-    showToast('Browser stream stopped', 'info');
+    showToast('Browser session ended', 'info');
   });
 
   // Plex/Emby/Jellyfin events
   state.socket.on('media:playing', (data) => {
     console.log('[Media] Now playing:', data);
     const label = `${data.source}: ${data.title}`;
-    addBotVideoToGrid(`media-${data.source}`, label, data.streamUrl, data.thumbnail);
+
+    // Prepend serverUrl to relative API paths (proxy URLs)
+    let streamUrl = data.streamUrl;
+    if (streamUrl && streamUrl.startsWith('/api/')) {
+      streamUrl = `${state.serverUrl}${streamUrl}`;
+    }
+
+    let thumbnail = data.thumbnail;
+    if (thumbnail && thumbnail.startsWith('/api/')) {
+      thumbnail = `${state.serverUrl}${thumbnail}`;
+    }
+
+    console.log('[Media] Stream URL:', streamUrl);
+    addBotVideoToGrid(`media-${data.source}`, label, streamUrl, thumbnail);
     showToast(`Now playing: ${data.title}`, 'success');
   });
 
@@ -602,6 +645,20 @@ function connectSocket() {
     console.log('[Media] Stopped:', data);
     removeBotVideoFromGrid(`media-${data.source}`);
     showToast(`${data.source} playback stopped`, 'info');
+  });
+
+  // Twitch bot events
+  state.socket.on('twitch:started', (data) => {
+    console.log('[Twitch] Stream started:', data);
+    const embedUrl = `https://player.twitch.tv/?channel=${data.streamer}&parent=${window.location.hostname}&autoplay=true`;
+    addBotVideoToGrid('twitch', `Twitch: ${data.streamer}`, embedUrl, null);
+    showToast(`Now watching: ${data.streamer} on Twitch`, 'success');
+  });
+
+  state.socket.on('twitch:stopped', (data) => {
+    console.log('[Twitch] Stream stopped');
+    removeBotVideoFromGrid('twitch');
+    showToast('Twitch stream stopped', 'info');
   });
 
   // Direct Message events
@@ -754,13 +811,13 @@ function renderMainApp() {
       </div>
     </main>
 
-    <aside class="voice-panel" id="voicePanel" style="display: none;">
+    <aside class="voice-panel" id="voicePanel" style="display: none; min-width: 600px;">
       <div class="voice-panel-header">
         <h3 id="voicePanelTitle">Voice</h3>
         <button class="header-btn" id="voicePanelFullscreenBtn" onclick="toggleVoicePanelFullscreen()" title="Fullscreen">⛶</button>
       </div>
       <div class="voice-panel-content" style="overflow-y: auto; flex: 1;">
-        <div id="videoGrid" class="video-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; max-height: 50vh; overflow-y: auto;"></div>
+        <div id="videoGrid" class="video-grid" style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px; max-height: 50vh; overflow-y: auto;"></div>
         <div class="voice-participants">
           <h4>In Voice — <span id="participantCount">0</span></h4>
           <div id="participantsList"></div>
@@ -1378,6 +1435,11 @@ function getScreenShareQuality() {
 }
 
 async function toggleScreenShare() {
+  // Exit fullscreen if active (modal won't show on top of native fullscreen)
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+  }
+
   // Always allow adding more screen shares - show picker
   if (window.electronAPI && window.electronAPI.getScreenSources) {
     try {
@@ -1763,8 +1825,13 @@ function removeVideoFromGrid(id) {
 
 // Add bot video/stream to the video grid (YouTube, IPTV, Chrome, Plex, etc.)
 function addBotVideoToGrid(botId, label, url, thumbnail) {
+  console.log('[addBotVideoToGrid] Called with:', { botId, label, url, thumbnail });
   const grid = document.getElementById('videoGrid');
-  if (!grid) return;
+  console.log('[addBotVideoToGrid] videoGrid element:', grid);
+  if (!grid) {
+    console.warn('[addBotVideoToGrid] No videoGrid element found - user may not be in voice channel');
+    return;
+  }
 
   // Remove existing element if present
   removeBotVideoFromGrid(botId);
@@ -1772,7 +1839,8 @@ function addBotVideoToGrid(botId, label, url, thumbnail) {
   const tile = document.createElement('div');
   tile.className = 'video-tile bot-video';
   tile.id = `bot-video-tile-${botId}`;
-  tile.style.cssText = 'position: relative; background: var(--bg-dark); border-radius: 8px; overflow: hidden; min-height: 180px;';
+  // Let CSS handle most styling, just ensure it's visible
+  tile.style.cssText = 'position: relative; min-height: 200px;';
 
   // For YouTube, use an iframe embed
   if (botId === 'youtube' && url) {
@@ -1782,29 +1850,146 @@ function addBotVideoToGrid(botId, label, url, thumbnail) {
       tile.innerHTML = `
         <iframe
           src="https://www.youtube.com/embed/${videoId}?autoplay=1"
-          style="width: 100%; height: 100%; min-height: 180px; border: none;"
+          style="width: 100%; height: 100%; min-height: 200px; border: none; position: absolute; top: 0; left: 0;"
           allow="autoplay; encrypted-media"
           allowfullscreen>
         </iframe>
-        <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
+        <div class="video-label">${escapeHtml(label)}</div>
+      `;
+    } else {
+      // Fallback if video ID can't be extracted
+      tile.innerHTML = `
+        <div style="width: 100%; height: 100%; min-height: 200px; display: flex; align-items: center; justify-content: center; background: var(--bg-darker);">
+          <div style="text-align: center; color: var(--text-muted);">
+            <div style="font-size: 32px; margin-bottom: 8px;">▶️</div>
+            <div>${escapeHtml(label)}</div>
+            <div style="font-size: 11px; margin-top: 4px;">Invalid YouTube URL</div>
+          </div>
+        </div>
       `;
     }
-  } else if (url) {
-    // For other bots, use a video element
+  } else if (botId === 'twitch' && url) {
+    // For Twitch, use an iframe embed (URL is already the embed URL)
     tile.innerHTML = `
-      <video src="${escapeHtml(url)}" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
-      <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
+      <iframe
+        src="${escapeHtml(url)}"
+        style="width: 100%; height: 100%; min-height: 200px; border: none; position: absolute; top: 0; left: 0;"
+        allow="autoplay; fullscreen"
+        allowfullscreen>
+      </iframe>
+      <div class="video-label">${escapeHtml(label)}</div>
     `;
+  } else if (botId === 'chrome' && url) {
+    // For Chrome bot, use an iframe to show the webpage
+    tile.innerHTML = `
+      <iframe
+        src="${escapeHtml(url)}"
+        style="width: 100%; height: 100%; min-height: 200px; border: none; background: white; position: absolute; top: 0; left: 0;"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        allowfullscreen>
+      </iframe>
+      <div class="video-label">${escapeHtml(label)}</div>
+    `;
+  } else if (botId === 'iptv' && url) {
+    // For IPTV, try HLS first, fall back to MPEG-TS
+    const videoId = `iptv-video-${Date.now()}`;
+    tile.innerHTML = `
+      <video id="${videoId}" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>
+      <div class="video-label">${escapeHtml(label)}</div>
+      <button onclick="const v=this.parentElement.querySelector('video'); v.muted=!v.muted; this.textContent=v.muted?'🔊 Unmute':'🔇 Mute';" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; z-index: 10;">🔊 Unmute</button>
+    `;
+
+    // Store original URL (without .m3u8) for MPEG-TS fallback
+    const originalUrl = url.replace('.m3u8', '');
+
+    // After appending to DOM, initialize player
+    setTimeout(() => {
+      const video = document.getElementById(videoId);
+      if (!video || !url) return;
+
+      const tryMpegTs = () => {
+        console.log('[IPTV] Trying MPEG-TS fallback with mpegts.js');
+        if (typeof mpegts !== 'undefined' && mpegts.isSupported()) {
+          const player = mpegts.createPlayer({
+            type: 'mpegts',
+            isLive: true,
+            url: originalUrl
+          });
+          player.attachMediaElement(video);
+          player.load();
+          player.play().catch(e => console.log('[IPTV] MPEG-TS autoplay blocked:', e));
+          video._mpegts = player;
+          console.log('[IPTV] MPEG-TS player initialized');
+        } else {
+          console.error('[IPTV] mpegts.js not supported');
+          tile.querySelector('.video-label').textContent = `${label} (Format not supported)`;
+        }
+      };
+
+      if (Hls && Hls.isSupported()) {
+        console.log('[IPTV] Trying HLS first');
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          console.log('[IPTV] HLS manifest parsed, playing');
+          video.play().catch(e => console.log('[IPTV] Autoplay blocked:', e));
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          console.error('[IPTV] HLS error:', data.type, data.details);
+          if (data.fatal) {
+            console.log('[IPTV] Fatal HLS error, trying MPEG-TS fallback');
+            hls.destroy();
+            tryMpegTs();
+          }
+        });
+
+        video._hls = hls;
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        video.src = url;
+        video.play().catch(e => console.log('[IPTV] Autoplay blocked:', e));
+      } else {
+        // No HLS support, try MPEG-TS directly
+        tryMpegTs();
+      }
+    }, 100);
+  } else if (url) {
+    // For other bots (Plex, Emby, Jellyfin), use video element with HLS support
+    const videoId = `media-video-${Date.now()}`;
+    tile.innerHTML = `
+      <video id="${videoId}" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>
+      <div class="video-label">${escapeHtml(label)}</div>
+      <button onclick="const v=this.parentElement.querySelector('video'); v.muted=!v.muted; this.textContent=v.muted?'🔊 Unmute':'🔇 Mute';" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; z-index: 10;">🔊 Unmute</button>
+    `;
+    setTimeout(() => {
+      const video = document.getElementById(videoId);
+      if (video && url) {
+        // Check if it's an HLS stream
+        if (url.includes('.m3u8') && Hls && Hls.isSupported()) {
+          const hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+          video._hls = hls;
+        } else {
+          video.src = url;
+          video.play().catch(() => {});
+        }
+      }
+    }, 100);
   } else if (thumbnail) {
     // Fallback to thumbnail with label
     tile.innerHTML = `
       <img src="${escapeHtml(thumbnail)}" style="width: 100%; height: 100%; object-fit: cover;" alt="${escapeHtml(label)}">
-      <div class="video-label" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${escapeHtml(label)}</div>
+      <div class="video-label">${escapeHtml(label)}</div>
     `;
   } else {
     // Placeholder
     tile.innerHTML = `
-      <div style="width: 100%; height: 100%; min-height: 180px; display: flex; align-items: center; justify-content: center; background: var(--bg-darker);">
+      <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--bg-darker);">
         <div style="text-align: center; color: var(--text-muted);">
           <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
           <div>${escapeHtml(label)}</div>
@@ -1817,12 +2002,23 @@ function addBotVideoToGrid(botId, label, url, thumbnail) {
   tile.addEventListener('dblclick', () => toggleVideoFullscreen(tile));
 
   grid.appendChild(tile);
+  console.log('[addBotVideoToGrid] Tile appended to grid. Current grid children:', grid.children.length);
 }
 
 // Remove bot video from the grid
 function removeBotVideoFromGrid(botId) {
   const tile = document.getElementById(`bot-video-tile-${botId}`);
   if (tile) {
+    // Cleanup HLS or MPEG-TS instance if present
+    const video = tile.querySelector('video');
+    if (video) {
+      if (video._hls) {
+        video._hls.destroy();
+      }
+      if (video._mpegts) {
+        video._mpegts.destroy();
+      }
+    }
     tile.remove();
   }
 }
@@ -2106,27 +2302,27 @@ async function openSettings() {
       <div class="settings-section">
         <h3>Devices</h3>
         <div class="settings-row">
-          <label>Microphone</label>
-          <select id="audioInputDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Microphone</label>
+          <button class="btn-secondary" onclick="testMicrophone()" style="padding: 8px; margin-right: 8px;">Test</button>
+          <select id="audioInputDevice" style="width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
             <option value="">Default</option>
             ${audioInputOptions}
           </select>
-          <button class="btn-secondary" onclick="testMicrophone()" style="margin-left: 8px; padding: 8px;">Test</button>
         </div>
         <div class="settings-row">
-          <label>Speakers</label>
-          <select id="audioOutputDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Speakers</label>
+          <select id="audioOutputDevice" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
             <option value="">Default</option>
             ${audioOutputOptions}
           </select>
         </div>
         <div class="settings-row">
-          <label>Camera</label>
-          <select id="cameraDevice" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Camera</label>
+          <button class="btn-secondary" onclick="testCamera()" style="padding: 8px; margin-right: 8px;">Preview</button>
+          <select id="cameraDevice" style="width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
             <option value="">Default</option>
             ${videoInputOptions}
           </select>
-          <button class="btn-secondary" onclick="testCamera()" style="margin-left: 8px; padding: 8px;">Preview</button>
         </div>
         <div id="cameraPreviewContainer" style="display: none; margin-top: 12px; background: var(--bg-dark); border-radius: 8px; overflow: hidden;">
           <video id="cameraPreview" autoplay playsinline muted style="width: 100%; max-height: 180px; transform: scaleX(-1);"></video>
@@ -2136,37 +2332,37 @@ async function openSettings() {
       <div class="settings-section">
         <h3>Audio</h3>
         <div class="settings-row">
-          <label>Input Volume</label>
-          <input type="range" min="0" max="200" value="${state.settings.inputVolume || 100}" id="inputVolume">
-          <span id="inputVolumeLabel" style="min-width: 40px; text-align: right;">${state.settings.inputVolume || 100}%</span>
+          <label style="min-width: 110px;">Input Volume</label>
+          <input type="range" min="0" max="200" value="${state.settings.inputVolume || 100}" id="inputVolume" style="flex: 1;">
+          <span id="inputVolumeLabel" style="min-width: 45px; text-align: right;">${state.settings.inputVolume || 100}%</span>
         </div>
         <div class="settings-row">
-          <label>Output Volume</label>
-          <input type="range" min="0" max="200" value="${state.settings.outputVolume || 100}" id="outputVolume">
-          <span id="outputVolumeLabel" style="min-width: 40px; text-align: right;">${state.settings.outputVolume || 100}%</span>
+          <label style="min-width: 110px;">Output Volume</label>
+          <input type="range" min="0" max="200" value="${state.settings.outputVolume || 100}" id="outputVolume" style="flex: 1;">
+          <span id="outputVolumeLabel" style="min-width: 45px; text-align: right;">${state.settings.outputVolume || 100}%</span>
         </div>
         <div class="settings-row">
-          <label>Voice Mode</label>
-          <select id="voiceMode" onchange="togglePTTKeyRow()">
+          <label style="min-width: 110px;">Voice Mode</label>
+          <select id="voiceMode" onchange="togglePTTKeyRow()" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
             <option value="ptt" ${!state.settings.voiceActivated ? 'selected' : ''}>Push to Talk</option>
             <option value="vad" ${state.settings.voiceActivated ? 'selected' : ''}>Voice Activated</option>
           </select>
         </div>
         <div class="settings-row" id="pttKeyRow" style="display: ${!state.settings.voiceActivated ? 'flex' : 'none'};">
-          <label>Push to Talk Key</label>
-          <button id="pttKeyBtn" onclick="capturePTTKey()" style="padding: 8px 16px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">
+          <label style="min-width: 110px;">Push to Talk Key</label>
+          <small style="color: var(--text-muted); font-size: 11px;">(Works when app is focused)</small>
+          <button id="pttKeyBtn" onclick="capturePTTKey()" style="width: 200px; margin-left: auto; padding: 8px 16px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">
             ${state.settings.pushToTalkKey || 'Click to set key'}
           </button>
           <input type="hidden" value="${state.settings.pushToTalkKey || ''}" id="pttKey">
-          <small style="color: var(--text-muted); font-size: 11px; margin-left: 8px;">(Works when app is focused)</small>
         </div>
       </div>
 
       <div class="settings-section">
         <h3>Screen Sharing</h3>
         <div class="settings-row">
-          <label>Default Quality</label>
-          <select id="screenShareQuality" style="flex: 1; max-width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Default Quality</label>
+          <select id="screenShareQuality" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
             <option value="720p" ${state.settings.screenShareQuality === '720p' ? 'selected' : ''}>720p HD (Low bandwidth)</option>
             <option value="1080p" ${!state.settings.screenShareQuality || state.settings.screenShareQuality === '1080p' ? 'selected' : ''}>1080p Full HD (Recommended)</option>
             <option value="1080p60" ${state.settings.screenShareQuality === '1080p60' ? 'selected' : ''}>1080p 60fps (Gaming)</option>
@@ -2185,12 +2381,12 @@ async function openSettings() {
       <div class="settings-section">
         <h3>Behavior</h3>
         <div class="settings-row">
-          <label>Minimize to Tray</label>
-          <input type="checkbox" ${state.settings.minimizeToTray ? 'checked' : ''} id="minimizeToTray">
+          <label style="min-width: 110px;">Minimize to Tray</label>
+          <input type="checkbox" ${state.settings.minimizeToTray ? 'checked' : ''} id="minimizeToTray" style="margin-left: auto;">
         </div>
         <div class="settings-row">
-          <label>Start Minimized</label>
-          <input type="checkbox" ${state.settings.startMinimized ? 'checked' : ''} id="startMinimized">
+          <label style="min-width: 110px;">Start Minimized</label>
+          <input type="checkbox" ${state.settings.startMinimized ? 'checked' : ''} id="startMinimized" style="margin-left: auto;">
         </div>
       </div>
       ` : ''}
@@ -2198,12 +2394,12 @@ async function openSettings() {
       <div class="settings-section">
         <h3>Account</h3>
         <div class="settings-row">
-          <label>Display Name</label>
-          <input type="text" value="${state.user?.displayName || ''}" id="displayName" style="width: 150px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Display Name</label>
+          <input type="text" value="${state.user?.displayName || ''}" id="displayName" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
         </div>
         <div class="settings-row">
-          <label>Steam ID</label>
-          <input type="text" value="${state.user?.steamId || ''}" id="steamId" style="width: 150px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+          <label style="min-width: 110px;">Steam ID</label>
+          <input type="text" value="${state.user?.steamId || ''}" id="steamId" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
         </div>
       </div>
 
@@ -2226,6 +2422,7 @@ async function openSettings() {
           <button class="btn-secondary" onclick="openAdminBotModal('iptv')">IPTV</button>
           <button class="btn-secondary" onclick="openAdminBotModal('chrome')">Chrome</button>
           <button class="btn-secondary" onclick="openAdminBotModal('twitch')">Twitch</button>
+          <button class="btn-secondary" onclick="openAdminBotModal('game-together')">Game Together</button>
         </div>
       </div>
       ` : ''}
@@ -2390,6 +2587,13 @@ async function saveSettings() {
   closeModal();
   showToast('Settings saved', 'success');
   renderMainApp();
+  renderChannels();
+  loadDMConversations();
+
+  // Re-select current channel to restore messages
+  if (state.currentChannel) {
+    selectChannel(state.currentChannel);
+  }
 }
 
 // Capture a key for PTT
@@ -2425,7 +2629,7 @@ function openInviteModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Create Invite</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
@@ -2493,7 +2697,7 @@ function openCreateUserModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Create User</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
@@ -2564,7 +2768,7 @@ async function openAdminPanel() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>User Management</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
       <div id="adminUserList">Loading users...</div>
@@ -2635,13 +2839,14 @@ async function updateUserRole(userId, role) {
 
 // YouTube Bot Modal
 async function openYouTubeBotModal() {
+  const prevModal = state.previousModal; // Preserve for refresh
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>YouTube Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="youtubeBotContent">Loading...</div>
@@ -2652,6 +2857,7 @@ async function openYouTubeBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal; // Restore for refresh
 
   // Load bot status
   try {
@@ -2700,7 +2906,7 @@ function renderYouTubeBotContent(data) {
         <div style="display: flex; gap: 8px; align-items: center;">
           <label style="min-width: 80px;">Channel:</label>
           <select id="ytBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            ${state.channels.filter(c => c.type === 'voice').map(c => `
+            ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `
               <option value="${c._id}">${escapeHtml(c.name)}</option>
             `).join('')}
           </select>
@@ -2878,13 +3084,14 @@ async function stopAllYouTubeStreams() {
 
 // ==================== Plex Bot Modal ====================
 async function openPlexBotModal() {
+  const prevModal = state.previousModal;
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Plex Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="plexBotContent">Loading...</div>
@@ -2895,6 +3102,7 @@ async function openPlexBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal;
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/plex-bot/status`, {
@@ -2973,7 +3181,7 @@ function renderPlexBotContent(data) {
         <div style="display: flex; gap: 8px; align-items: center;">
           <label style="min-width: 80px;">Channel:</label>
           <select id="plexBotChannel" style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            ${state.channels.filter(c => c.type === 'voice').map(c => `
+            ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `
               <option value="${c._id}">${escapeHtml(c.name)}</option>
             `).join('')}
           </select>
@@ -3187,7 +3395,7 @@ async function openFederationModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Federation</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
       <div id="federationContent">Loading...</div>
@@ -3439,13 +3647,14 @@ async function kickUserFromChannel(userId, channelId) {
 
 // ==================== Emby Bot Modal ====================
 async function openEmbyBotModal() {
+  const prevModal = state.previousModal;
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Emby Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="embyBotContent">Loading...</div>
@@ -3456,6 +3665,7 @@ async function openEmbyBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal;
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/emby-bot/status`, {
@@ -3471,13 +3681,14 @@ async function openEmbyBotModal() {
 
 // ==================== Jellyfin Bot Modal ====================
 async function openJellyfinBotModal() {
+  const prevModal = state.previousModal;
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Jellyfin Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="jellyfinBotContent">Loading...</div>
@@ -3488,6 +3699,7 @@ async function openJellyfinBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal;
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/jellyfin-bot/status`, {
@@ -3539,7 +3751,7 @@ function renderMediaBotContent(botType, data) {
       <h3>Play Media</h3>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
         <select id="${botType}Channel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+          ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <div style="display: flex; gap: 8px;">
           <input type="text" id="${botType}Search" placeholder="Search..." style="flex: 1; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
@@ -3676,13 +3888,14 @@ async function stopMediaBot(botType, channelId) {
 
 // ==================== Chrome Bot Modal ====================
 async function openChromeBotModal() {
+  const prevModal = state.previousModal; // Preserve for refresh
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Chrome Bot (Shared Browser)</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="chromeBotContent">Loading...</div>
@@ -3693,6 +3906,7 @@ async function openChromeBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal; // Restore for navigation
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/status`, {
@@ -3740,7 +3954,7 @@ function renderChromeBotContent(data) {
       <h3>Start Session</h3>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
         <select id="chromeChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+          ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <input type="text" id="chromeStartUrl" value="https://google.com" placeholder="Starting URL" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
         <button class="btn-primary" onclick="startChromeSession()">Start Browser Session</button>
@@ -3779,8 +3993,11 @@ async function toggleChromeSafeSearch(enabled) {
   }
 }
 
-async function saveChromeBotSettings() {
-  const blockedDomains = document.getElementById('chromeBlockedDomains').value
+async function saveChromeBotSettings(silent = false) {
+  const blockedDomainsEl = document.getElementById('chromeBlockedDomains');
+  if (!blockedDomainsEl) return; // Element doesn't exist, nothing to save
+
+  const blockedDomains = blockedDomainsEl.value
     .split('\n')
     .map(d => d.trim())
     .filter(d => d.length > 0);
@@ -3792,13 +4009,14 @@ async function saveChromeBotSettings() {
       body: JSON.stringify({ blockedDomains })
     });
     if (!response.ok) throw new Error((await response.json()).error);
-    showToast('Chrome bot settings saved', 'success');
+    if (!silent) showToast('Chrome bot settings saved', 'success');
   } catch (error) {
-    showToast('Failed: ' + error.message, 'error');
+    if (!silent) showToast('Failed: ' + error.message, 'error');
   }
 }
 
 async function toggleChromeBot(enabled) {
+  const prevModal = state.previousModal; // Preserve previous modal state
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/enable`, {
       method: 'POST',
@@ -3809,6 +4027,7 @@ async function toggleChromeBot(enabled) {
     if (!response.ok) throw new Error(result.error);
     showToast(result.message, 'success');
     openChromeBotModal();
+    state.previousModal = prevModal; // Restore previous modal state
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -3817,6 +4036,7 @@ async function toggleChromeBot(enabled) {
 async function startChromeSession() {
   const channelId = document.getElementById('chromeChannel').value;
   const url = document.getElementById('chromeStartUrl').value.trim();
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/start`, {
       method: 'POST',
@@ -3827,12 +4047,14 @@ async function startChromeSession() {
     if (!response.ok) throw new Error(result.error);
     showToast('Browser session started', 'success');
     openChromeBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
 }
 
 async function stopChromeSession(channelId) {
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/chrome-bot/stop`, {
       method: 'POST',
@@ -3842,6 +4064,7 @@ async function stopChromeSession(channelId) {
     if (!response.ok) throw new Error((await response.json()).error);
     showToast('Session stopped', 'success');
     openChromeBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -3849,13 +4072,14 @@ async function stopChromeSession(channelId) {
 
 // ==================== IPTV Bot Modal ====================
 async function openIPTVBotModal() {
+  const prevModal = state.previousModal; // Preserve for refresh
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>IPTV Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
       <div id="iptvBotContent">Loading...</div>
@@ -3866,6 +4090,7 @@ async function openIPTVBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal; // Restore for navigation
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/status`, {
@@ -3894,8 +4119,15 @@ function renderIPTVBotContent(data) {
     <div class="settings-section" style="margin-bottom: 16px;">
       <h3>Configure IPTV</h3>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
-        <input type="text" id="iptvPlaylistUrl" placeholder="M3U Playlist URL" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        <input type="text" id="iptvEpgUrl" placeholder="EPG/XMLTV URL (optional)" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">M3U/M3U8 Playlist File</label>
+          <input type="file" id="iptvPlaylistFile" accept=".m3u,.m3u8" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); width: 100%;">
+          <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Upload your M3U/M3U8 playlist file</p>
+        </div>
+        <div>
+          <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">EPG/XMLTV URL (optional)</label>
+          <input type="text" id="iptvEpgUrl" placeholder="https://example.com/epg.xml" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); width: 100%;">
+        </div>
         <button class="btn-primary" onclick="configureIPTV()">Load Playlist</button>
       </div>
     </div>
@@ -3905,7 +4137,7 @@ function renderIPTVBotContent(data) {
       <h3>Watch TV</h3>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
         <select id="iptvVoiceChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+          ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <button class="btn-secondary" onclick="loadIPTVChannels()">Load Channel Guide</button>
         <div id="iptvChannelList" style="max-height: 200px; overflow-y: auto;"></div>
@@ -3937,6 +4169,7 @@ function renderIPTVBotContent(data) {
 }
 
 async function toggleIPTVBot(enabled) {
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/enable`, {
       method: 'POST',
@@ -3947,25 +4180,40 @@ async function toggleIPTVBot(enabled) {
     if (!response.ok) throw new Error(result.error);
     showToast(result.message, 'success');
     openIPTVBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
 }
 
 async function configureIPTV() {
-  const playlistUrl = document.getElementById('iptvPlaylistUrl').value.trim();
+  const fileInput = document.getElementById('iptvPlaylistFile');
   const epgUrl = document.getElementById('iptvEpgUrl').value.trim();
-  if (!playlistUrl) { showToast('Playlist URL required', 'error'); return; }
+
+  if (!fileInput.files || fileInput.files.length === 0) {
+    showToast('Please select an M3U playlist file', 'error');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append('playlist', file);
+  if (epgUrl) {
+    formData.append('epgUrl', epgUrl);
+  }
+
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/configure`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
-      body: JSON.stringify({ playlistUrl, epgUrl: epgUrl || undefined })
+      headers: { 'Authorization': `Bearer ${state.token}` },
+      body: formData
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
     showToast(`Loaded ${result.channelCount} channels`, 'success');
     openIPTVBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -3994,6 +4242,7 @@ async function loadIPTVChannels() {
 
 async function playIPTV(iptvChannelId) {
   const voiceChannelId = document.getElementById('iptvVoiceChannel').value;
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/play`, {
       method: 'POST',
@@ -4004,12 +4253,14 @@ async function playIPTV(iptvChannelId) {
     if (!response.ok) throw new Error(result.error);
     showToast(`Now watching: ${result.channel}`, 'success');
     openIPTVBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
 }
 
 async function stopIPTV(voiceChannelId) {
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/iptv-bot/stop`, {
       method: 'POST',
@@ -4019,6 +4270,7 @@ async function stopIPTV(voiceChannelId) {
     if (!response.ok) throw new Error((await response.json()).error);
     showToast('Stopped', 'success');
     openIPTVBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -4055,7 +4307,7 @@ function openCreateChannelModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Create Channel</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="settings-section">
@@ -4142,7 +4394,7 @@ async function openEditChannelModal(channelId) {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Edit Channel</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="settings-section">
@@ -4277,7 +4529,7 @@ async function openGroupsModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Groups & Access Control</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
       <div id="groupsContent">Loading...</div>
@@ -4569,7 +4821,11 @@ function closeModal() {
     state.previousModal = null;
     // Call the return modal function
     if (returnTo === 'settings') {
-      openSettings();
+      openSettings().catch(err => {
+        console.error('Failed to open settings:', err);
+        showToast('Error returning to settings: ' + err.message, 'error');
+        document.getElementById('modalOverlay').classList.remove('active');
+      });
     } else if (returnTo === 'bots') {
       openBotsModal();
     }
@@ -4593,16 +4849,27 @@ function closeModalFull() {
   document.getElementById('modalOverlay').classList.remove('active');
 }
 
+// Close bot modal and return to settings (for admin context)
+function closeBotModalToSettings() {
+  state.previousModal = null;
+  openSettings();
+}
+
 // ==================== Bot Picker Modal ====================
 // Opens from voice panel - shows all available bots to users
 function openBotsModal() {
+  // Exit fullscreen if active (modal won't show on top of native fullscreen)
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  }
+
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Channel Bots</h2>
-      <button class="close-btn" onclick="closeModalFull()">×</button>
+      <button class="modal-close" onclick="closeModalFull()">✕</button>
     </div>
     <div class="modal-body">
       <p style="color: var(--text-muted); margin-bottom: 16px;">Select a bot to use in the current voice channel</p>
@@ -4756,6 +5023,9 @@ function openAdminBotModal(botType) {
     case 'chrome':
       openChromeBotModal();
       break;
+    case 'game-together':
+      openGameTogetherBotModal();
+      break;
     default:
       showToast('Bot admin panel not yet implemented', 'warning');
       openSettings();
@@ -4764,13 +5034,14 @@ function openAdminBotModal(botType) {
 
 // ==================== Twitch Bot Modal ====================
 async function openTwitchBotModal() {
+  const prevModal = state.previousModal; // Preserve for refresh
   const overlay = document.getElementById('modalOverlay');
   const modal = document.getElementById('modalContent');
 
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Twitch Bot</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="twitchBotContent">Loading...</div>
@@ -4781,6 +5052,7 @@ async function openTwitchBotModal() {
   `;
 
   overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal; // Restore for navigation
 
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/status`, {
@@ -4811,7 +5083,7 @@ function renderTwitchBotContent(data) {
       <h3>Watch Stream</h3>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
         <select id="twitchChannel" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-          ${state.channels.filter(c => c.type === 'voice').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
+          ${state.channels.filter(c => c.type === 'voice' || c.type === 'video').map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <input type="text" id="twitchStreamer" placeholder="Streamer username" style="padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
         <button class="btn-primary" onclick="watchTwitchStream()">Watch Stream</button>
@@ -4837,6 +5109,7 @@ function renderTwitchBotContent(data) {
 }
 
 async function toggleTwitchBot(enabled) {
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/enable`, {
       method: 'POST',
@@ -4846,6 +5119,7 @@ async function toggleTwitchBot(enabled) {
     if (!response.ok) throw new Error((await response.json()).error);
     showToast(enabled ? 'Twitch bot enabled' : 'Twitch bot disabled', 'success');
     openTwitchBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -4858,6 +5132,7 @@ async function watchTwitchStream() {
     showToast('Please enter a streamer username', 'warning');
     return;
   }
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/play`, {
       method: 'POST',
@@ -4867,12 +5142,14 @@ async function watchTwitchStream() {
     if (!response.ok) throw new Error((await response.json()).error);
     showToast('Now watching ' + streamer, 'success');
     openTwitchBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
 }
 
 async function stopTwitchStream(channelId) {
+  const prevModal = state.previousModal;
   try {
     const response = await fetch(`${state.serverUrl}/api/admin/twitch-bot/stop`, {
       method: 'POST',
@@ -4882,6 +5159,120 @@ async function stopTwitchStream(channelId) {
     if (!response.ok) throw new Error((await response.json()).error);
     showToast('Stream stopped', 'success');
     openTwitchBotModal();
+    state.previousModal = prevModal;
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+// ==================== Game Together Bot Modal ====================
+async function openGameTogetherBotModal() {
+  const prevModal = state.previousModal;
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Game Together</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="gameTogetherContent">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+
+  overlay.classList.add('active');
+  if (prevModal) state.previousModal = prevModal;
+
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    renderGameTogetherContent(data);
+  } catch (error) {
+    document.getElementById('gameTogetherContent').innerHTML = `<p style="color: var(--danger);">Failed to load: ${error.message}</p>`;
+  }
+}
+
+function renderGameTogetherContent(data) {
+  const { enabled, platform, backendAvailable, activeSessions } = data;
+  document.getElementById('gameTogetherContent').innerHTML = `
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Service Status</h3>
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 12px;">
+        <span style="color: ${enabled ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">${enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="btn-${enabled ? 'danger' : 'primary'}" onclick="toggleGameTogether(${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Virtual controller emulation for remote multiplayer gaming.</p>
+    </div>
+
+    <div class="settings-section" style="margin-bottom: 16px;">
+      <h3>Platform Info</h3>
+      <div style="margin-top: 12px; padding: 12px; background: var(--bg-dark); border-radius: var(--radius-sm);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span style="color: var(--text-muted);">Platform:</span>
+          <span>${escapeHtml(platform || 'Unknown')}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--text-muted);">Controller Backend:</span>
+          <span style="color: ${backendAvailable ? 'var(--success)' : 'var(--danger)'};">${backendAvailable ? 'Available' : 'Not Available'}</span>
+        </div>
+      </div>
+      ${!backendAvailable ? `<p style="color: var(--warning); font-size: 12px; margin-top: 8px;">Virtual controller backend not available. Install ViGEmBus (Windows), uinput (Linux), or foohid (macOS).</p>` : ''}
+    </div>
+
+    <div class="settings-section">
+      <h3>Active Sessions (${activeSessions?.length || 0})</h3>
+      <div style="margin-top: 12px;">
+        ${activeSessions?.length > 0 ? activeSessions.map(s => `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-dark); border-radius: var(--radius-sm); margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 500;">Host: ${escapeHtml(s.hostUsername)}</div>
+              <div style="font-size: 12px; color: var(--text-muted);">${s.playerCount} player(s) connected</div>
+            </div>
+            <button class="btn-danger" onclick="stopGameTogetherSession('${s.channelId}')" style="padding: 6px 12px;">Stop</button>
+          </div>
+        `).join('') : '<p style="color: var(--text-muted);">No active sessions</p>'}
+      </div>
+    </div>
+  `;
+}
+
+async function toggleGameTogether(enabled) {
+  const prevModal = state.previousModal;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ enabled })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    showToast(enabled ? 'Game Together enabled' : 'Game Together disabled', 'success');
+    openGameTogetherBotModal();
+    state.previousModal = prevModal;
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+async function stopGameTogetherSession(channelId) {
+  const prevModal = state.previousModal;
+  try {
+    const response = await fetch(`${state.serverUrl}/api/admin/game-together/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+      body: JSON.stringify({ channelId })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    showToast('Session stopped', 'success');
+    openGameTogetherBotModal();
+    state.previousModal = prevModal;
   } catch (error) {
     showToast('Failed: ' + error.message, 'error');
   }
@@ -5008,7 +5399,7 @@ function openAddServerModal() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Add Server</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="settings-section">
@@ -5290,7 +5681,7 @@ function openThemeSelector() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>Choose Theme</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
@@ -5341,7 +5732,7 @@ function openGameTogetherFromBots() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>🎮 Game Together</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <p style="color: var(--text-muted); margin-bottom: 16px;">Play ANY local multiplayer game together with friends in your voice channel!</p>
@@ -5428,7 +5819,7 @@ async function showGameTogetherJoinList() {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>🎮 Join Game Together</h2>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div id="gameTogetherSessionList" style="text-align: center;">
@@ -5629,7 +6020,7 @@ function openGameTogetherMenu(hostUserId, hostLabel) {
   modal.innerHTML = `
     <div class="modal-header">
       <h2>🎮 Game Together</h2>
-      <button class="close-btn" onclick="closeModalFull()">×</button>
+      <button class="modal-close" onclick="closeModalFull()">✕</button>
     </div>
     <div class="modal-body" style="text-align: center;">
       <p style="margin-bottom: 24px;">Play games together with ${hostLabel}!</p>

@@ -36,8 +36,19 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Static files for uploads only
+// Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Serve web client static files (for development - in production, use nginx)
+app.use(express.static(path.join(__dirname, '..', 'client', 'public'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+}));
 
 // API routes
 app.use('/api', apiRoutes);
@@ -149,12 +160,16 @@ const startServer = async () => {
       }
     }
 
+    // Bot registry for tracking active sessions
+    const botRegistry = require('./services/botRegistry');
+
     // Initialize YouTube bot service
     try {
       const { YouTubeBotService } = require('./services/youtubeBotService');
       const youtubeBotController = require('./controllers/youtubeBotController');
       youtubeBotService = new YouTubeBotService(io);
       youtubeBotController.initialize(youtubeBotService);
+      botRegistry.register('youtube', youtubeBotService);
       console.log('YouTube bot service initialized');
     } catch (err) {
       console.error('YouTube bot service failed to initialize:', err.message);
@@ -166,6 +181,7 @@ const startServer = async () => {
       const plexBotController = require('./controllers/plexBotController');
       plexBotService = new PlexBotService(io);
       plexBotController.initialize(plexBotService);
+      botRegistry.register('plex', plexBotService);
       console.log('Plex bot service initialized');
     } catch (err) {
       console.error('Plex bot service failed to initialize:', err.message);
@@ -177,6 +193,7 @@ const startServer = async () => {
       const embyBotController = require('./controllers/embyBotController');
       const embyBotService = new EmbyBotService(io);
       embyBotController.initialize(embyBotService);
+      botRegistry.register('emby', embyBotService);
       console.log('Emby bot service initialized');
     } catch (err) {
       console.error('Emby bot service failed to initialize:', err.message);
@@ -188,6 +205,7 @@ const startServer = async () => {
       const jellyfinBotController = require('./controllers/jellyfinBotController');
       const jellyfinBotService = new JellyfinBotService(io);
       jellyfinBotController.initialize(jellyfinBotService);
+      botRegistry.register('jellyfin', jellyfinBotService);
       console.log('Jellyfin bot service initialized');
     } catch (err) {
       console.error('Jellyfin bot service failed to initialize:', err.message);
@@ -199,6 +217,7 @@ const startServer = async () => {
       const chromeBotController = require('./controllers/chromeBotController');
       const chromeBotService = new ChromeBotService(io);
       chromeBotController.initialize(chromeBotService);
+      botRegistry.register('chrome', chromeBotService);
       console.log('Chrome bot service initialized');
     } catch (err) {
       console.error('Chrome bot service failed to initialize:', err.message);
@@ -210,20 +229,22 @@ const startServer = async () => {
       const iptvBotController = require('./controllers/iptvBotController');
       const iptvBotService = new IPTVBotService(io);
       iptvBotController.initialize(iptvBotService);
+      botRegistry.register('iptv', iptvBotService);
       console.log('IPTV bot service initialized');
     } catch (err) {
       console.error('IPTV bot service failed to initialize:', err.message);
     }
 
-    // Initialize Spotify bot service
+    // Initialize Twitch bot service
     try {
-      const { SpotifyBotService } = require('./services/spotifyBotService');
-      const spotifyBotController = require('./controllers/spotifyBotController');
-      const spotifyBotService = new SpotifyBotService(io);
-      spotifyBotController.initialize(spotifyBotService);
-      console.log('Spotify bot service initialized');
+      const TwitchBotService = require('./services/twitchBotService');
+      const twitchBotController = require('./controllers/twitchBotController');
+      const twitchBotService = new TwitchBotService(io);
+      twitchBotController.initialize(twitchBotService);
+      botRegistry.register('twitch', twitchBotService);
+      console.log('Twitch bot service initialized');
     } catch (err) {
-      console.error('Spotify bot service failed to initialize:', err.message);
+      console.error('Twitch bot service failed to initialize:', err.message);
     }
 
     // Initialize Group service

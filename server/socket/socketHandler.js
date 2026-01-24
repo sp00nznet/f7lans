@@ -521,6 +521,7 @@ const handleUserConnection = async (io, socket) => {
 
       socket.join(`voice:${channelId}`);
       socket.voiceChannel = channelId;
+      console.log(`[Voice] User ${user.username} joined voice room voice:${channelId}`);
 
       // Notify others
       io.to(`voice:${channelId}`).emit('voice:userJoined', {
@@ -537,6 +538,21 @@ const handleUserConnection = async (io, socket) => {
         channelId,
         users: updatedChannel.currentUsers
       });
+
+      // Send active bot sessions to the joining user
+      try {
+        const botRegistry = require('../services/botRegistry');
+        const activeSessions = botRegistry.getActiveSessionsForChannel(channelId);
+        if (activeSessions.length > 0) {
+          console.log(`[Voice] Sending ${activeSessions.length} active bot session(s) to user ${user.username}`);
+          activeSessions.forEach(session => {
+            console.log(`[Voice] Emitting ${session.event} to joining user`);
+            socket.emit(session.event, session.data);
+          });
+        }
+      } catch (err) {
+        console.error('[Voice] Error sending bot sessions:', err.message);
+      }
 
       // Broadcast to federation
       broadcastToFederation('federation:voice:state', {

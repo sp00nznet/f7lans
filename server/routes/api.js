@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { authenticate, adminOnly } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/accessControl');
 const authController = require('../controllers/authController');
@@ -14,7 +15,6 @@ const embyBotController = require('../controllers/embyBotController');
 const jellyfinBotController = require('../controllers/jellyfinBotController');
 const chromeBotController = require('../controllers/chromeBotController');
 const iptvBotController = require('../controllers/iptvBotController');
-const spotifyBotController = require('../controllers/spotifyBotController');
 const groupController = require('../controllers/groupController');
 const fileShareController = require('../controllers/fileShareController');
 const activityController = require('../controllers/activityController');
@@ -78,6 +78,31 @@ const serverIconUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// IPTV playlist upload config
+const iptvPlaylistStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/iptv');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `playlist-${Date.now()}.m3u`);
+  }
+});
+
+const iptvPlaylistUpload = multer({
+  storage: iptvPlaylistStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB for large playlists
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.m3u' || ext === '.m3u8') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only M3U/M3U8 files are allowed'));
     }
   }
 });
@@ -207,7 +232,7 @@ router.post('/admin/chrome-bot/transfer', authenticate, chromeBotController.tran
 // ===== IPTV Bot Routes =====
 router.get('/admin/iptv-bot/status', authenticate, adminOnly, iptvBotController.getStatus);
 router.post('/admin/iptv-bot/enable', authenticate, adminOnly, iptvBotController.setEnabled);
-router.post('/admin/iptv-bot/configure', authenticate, adminOnly, iptvBotController.configure);
+router.post('/admin/iptv-bot/configure', authenticate, adminOnly, iptvPlaylistUpload.single('playlist'), iptvBotController.configure);
 router.get('/admin/iptv-bot/channels', authenticate, iptvBotController.getChannels);
 router.get('/admin/iptv-bot/groups', authenticate, iptvBotController.getGroups);
 router.get('/admin/iptv-bot/epg/:channelId', authenticate, iptvBotController.getEPG);
@@ -219,21 +244,78 @@ router.get('/admin/iptv-bot/recordings', authenticate, iptvBotController.getReco
 router.delete('/admin/iptv-bot/recordings/:recordingId', authenticate, iptvBotController.cancelRecording);
 router.post('/admin/iptv-bot/recordings/:recordingId/tag', authenticate, iptvBotController.tagUser);
 
-// ===== Spotify Bot Routes =====
-router.get('/admin/spotify-bot/status', authenticate, adminOnly, spotifyBotController.getStatus);
-router.post('/admin/spotify-bot/enable', authenticate, adminOnly, spotifyBotController.setEnabled);
-router.post('/admin/spotify-bot/configure', authenticate, adminOnly, spotifyBotController.configure);
-router.get('/admin/spotify-bot/auth-url', authenticate, adminOnly, spotifyBotController.getAuthUrl);
-router.post('/admin/spotify-bot/callback', authenticate, adminOnly, spotifyBotController.callback);
-router.post('/admin/spotify-bot/disconnect', authenticate, adminOnly, spotifyBotController.disconnect);
-router.get('/admin/spotify-bot/search', authenticate, spotifyBotController.search);
-router.get('/admin/spotify-bot/playlists', authenticate, spotifyBotController.getPlaylists);
-router.get('/admin/spotify-bot/playlists/:playlistId/tracks', authenticate, spotifyBotController.getPlaylistTracks);
-router.post('/admin/spotify-bot/play', authenticate, spotifyBotController.play);
-router.post('/admin/spotify-bot/queue', authenticate, spotifyBotController.addToQueue);
-router.post('/admin/spotify-bot/skip', authenticate, spotifyBotController.skip);
-router.get('/admin/spotify-bot/queue/:channelId', authenticate, spotifyBotController.getQueue);
-router.post('/admin/spotify-bot/stop', authenticate, spotifyBotController.stop);
+// IPTV Stream Proxy - bypasses CORS for browser playback
+// Note: No auth required since hls.js segment requests don't include headers
+router.get('/stream/proxy', async (req, res) => {
+  const { url } = req.query;
+  console.log(`[StreamProxy] Request for: ${url ? url.substring(0, 100) : 'NO URL'}`);
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL required' });
+  }
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+    console.log(`[StreamProxy] Fetching: ${url.substring(0, 100)}...`);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'F7Lans/1.0'
+      }
+    });
+
+    console.log(`[StreamProxy] Response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
+
+    if (!response.ok) {
+      console.error(`[StreamProxy] Fetch failed: ${response.status} for ${url}`);
+      return res.status(response.status).json({ error: 'Stream fetch failed' });
+    }
+
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+
+    const contentType = response.headers.get('content-type') || '';
+    const isM3U8 = url.includes('.m3u8') || contentType.includes('mpegurl') || contentType.includes('x-mpegURL');
+
+    if (isM3U8) {
+      // For HLS manifests, rewrite URLs to go through proxy
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+
+      let content = await response.text();
+      const baseUrl = new URL(url);
+      const basePath = url.substring(0, url.lastIndexOf('/') + 1);
+
+      // Rewrite relative and absolute URLs in the manifest
+      content = content.split('\n').map(line => {
+        line = line.trim();
+        if (line && !line.startsWith('#')) {
+          // This is a URL line
+          let segmentUrl;
+          if (line.startsWith('http://') || line.startsWith('https://')) {
+            segmentUrl = line;
+          } else if (line.startsWith('/')) {
+            segmentUrl = `${baseUrl.protocol}//${baseUrl.host}${line}`;
+          } else {
+            segmentUrl = basePath + line;
+          }
+          return `/api/stream/proxy?url=${encodeURIComponent(segmentUrl)}`;
+        }
+        return line;
+      }).join('\n');
+
+      res.send(content);
+    } else {
+      // For segments and other content, pipe through
+      if (contentType) {
+        res.setHeader('Content-Type', contentType);
+      }
+      response.body.pipe(res);
+    }
+  } catch (error) {
+    console.error('[StreamProxy] Error:', error.message);
+    res.status(500).json({ error: 'Stream proxy error: ' + error.message });
+  }
+});
 
 // ===== Twitch Bot Routes =====
 router.get('/admin/twitch-bot/status', authenticate, adminOnly, twitchBotController.getStatus);

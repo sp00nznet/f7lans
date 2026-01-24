@@ -197,7 +197,7 @@ class TwitchBotService {
     this.activeStreams.set(channelId, streamData);
 
     // Notify channel
-    this.io.to(`channel:${channelId}`).emit('twitch:started', {
+    this.io.to(`voice:${channelId}`).emit('twitch:started', {
       channelId,
       ...streamData
     });
@@ -211,7 +211,7 @@ class TwitchBotService {
     if (stream) {
       this.activeStreams.delete(channelId);
 
-      this.io.to(`channel:${channelId}`).emit('twitch:stopped', {
+      this.io.to(`voice:${channelId}`).emit('twitch:stopped', {
         channelId
       });
     }
