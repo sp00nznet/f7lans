@@ -5,6 +5,7 @@ stages:
   - build
   - package
   - release
+  - deploy
 
 variables:
   DOCKER_IMAGE: f7lans-server
@@ -247,5 +248,64 @@ release:
         - name: "Docker Server Image"
           url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/download?job=build:docker-server"
           link_type: package
+  rules:
+    - if: $CI_COMMIT_TAG
+
+# ============================================
+# Deploy Jobs (on tags only)
+# Copies build artifacts to network share
+# ============================================
+
+deploy:linux:
+  stage: deploy
+  tags:
+    - linux
+  needs:
+    - job: build:linux-client-remote
+      artifacts: true
+    - job: build:linux-client-standalone
+      artifacts: true
+    - job: build:docker-server
+      artifacts: true
+  script:
+    - mkdir -p /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME
+    - cp -r electron-client/dist/* /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+    - cp -r electron-client/dist/unified/* /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+    - cp -r f7lans-server-*.tar.gz /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy:windows:
+  stage: deploy
+  tags:
+    - windows
+  needs:
+    - job: build:windows-client-remote
+      artifacts: true
+    - job: build:windows-client-standalone
+      artifacts: true
+  script:
+    - net use R: \\192.168.100.22\releases gitlab /user:root
+    - if not exist "R:\%CI_PROJECT_NAME%\%CI_COMMIT_REF_NAME%" mkdir "R:\%CI_PROJECT_NAME%\%CI_COMMIT_REF_NAME%"
+    - xcopy /E /I /Y electron-client\dist\*.exe "R:\%CI_PROJECT_NAME%\%CI_COMMIT_REF_NAME%\"
+    - xcopy /E /I /Y electron-client\dist\unified\*.exe "R:\%CI_PROJECT_NAME%\%CI_COMMIT_REF_NAME%\"
+    - net use R: /delete
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy:macos:
+  stage: deploy
+  tags:
+    - macos
+  needs:
+    - job: build:linux-client-remote
+      artifacts: true
+      optional: true
+  script:
+    - mkdir -p /tmp/releases
+    - mount_smbfs //root:gitlab@192.168.100.22/releases /tmp/releases
+    - mkdir -p /tmp/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME
+    - cp -r electron-client/dist/* /tmp/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+    - umount /tmp/releases
   rules:
     - if: $CI_COMMIT_TAG
