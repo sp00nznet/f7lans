@@ -83,33 +83,31 @@ build:windows-client-standalone:
     - if: $CI_PIPELINE_SOURCE == "web"
 
 # ============================================
-# Docker Container Build (Server) - Using Kaniko
-# Kaniko builds containers without Docker daemon
+# Docker Container Build (Server) - Using Buildah
+# Buildah builds OCI containers without Docker daemon
+# Requires: apt install buildah on the Debian runner
 # ============================================
 build:docker-server:
   stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:v1.19.2-debug
-    entrypoint: [""]
   tags:
     - debian
+  before_script:
+    - buildah --version
   script:
-    # Create Kaniko config for registry auth
-    - mkdir -p /kaniko/.docker
+    # Build server image
+    - buildah bud -t f7lans-server:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.server .
+    - buildah tag f7lans-server:${CI_COMMIT_SHORT_SHA} f7lans-server:latest
+    # Push to registry if configured
     - |
-      if [ -n "$CI_REGISTRY" ]; then
-        echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+      if [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ]; then
+        buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+        buildah tag f7lans-server:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+        buildah tag f7lans-server:latest ${CI_REGISTRY_IMAGE}:latest
+        buildah push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+        buildah push ${CI_REGISTRY_IMAGE}:latest
       fi
-    # Build and push server image
-    - |
-      /kaniko/executor \
-        --context "${CI_PROJECT_DIR}" \
-        --dockerfile "${CI_PROJECT_DIR}/docker/Dockerfile.server" \
-        --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
-        --destination "${CI_REGISTRY_IMAGE}:latest" \
-        --tar-path "f7lans-server-${CI_COMMIT_SHORT_SHA}.tar" \
-        --cache=true \
-        --cache-ttl=168h
+    # Save image as portable tarball
+    - buildah push f7lans-server:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
     - gzip f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-server-docker-${CI_COMMIT_SHORT_SHA}"
@@ -121,29 +119,25 @@ build:docker-server:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "web"
 
-# Build web client container using Kaniko
+# Build web client container using Buildah
 build:docker-webclient:
   stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:v1.19.2-debug
-    entrypoint: [""]
   tags:
     - debian
+  before_script:
+    - buildah --version
   script:
-    - mkdir -p /kaniko/.docker
+    - buildah bud -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
+    - buildah tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} f7lans-webclient:latest
     - |
-      if [ -n "$CI_REGISTRY" ]; then
-        echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+      if [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ]; then
+        buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+        buildah tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
+        buildah tag f7lans-webclient:latest ${CI_REGISTRY_IMAGE}/webclient:latest
+        buildah push ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
+        buildah push ${CI_REGISTRY_IMAGE}/webclient:latest
       fi
-    - |
-      /kaniko/executor \
-        --context "${CI_PROJECT_DIR}" \
-        --dockerfile "${CI_PROJECT_DIR}/docker/Dockerfile.webclient" \
-        --destination "${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}" \
-        --destination "${CI_REGISTRY_IMAGE}/webclient:latest" \
-        --tar-path "f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar" \
-        --cache=true \
-        --cache-ttl=168h
+    - buildah push f7lans-webclient:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
     - gzip f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-webclient-docker-${CI_COMMIT_SHORT_SHA}"
