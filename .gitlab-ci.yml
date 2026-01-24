@@ -85,13 +85,13 @@ build:windows-client-standalone:
 # ============================================
 # Docker Container Build (Server) - Using Buildah
 # Buildah builds OCI containers without Docker daemon
-# Requires: apt install buildah on the Debian runner
 # ============================================
 build:docker-server:
   stage: build
   tags:
     - debian
   before_script:
+    - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
     # Build server image
@@ -125,6 +125,7 @@ build:docker-webclient:
   tags:
     - debian
   before_script:
+    - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
     - buildah bud -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
