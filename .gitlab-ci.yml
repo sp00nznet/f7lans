@@ -1,0 +1,215 @@
+# F7Lans GitLab CI/CD Pipeline
+# Builds Windows client and containerized server
+
+stages:
+  - build
+  - package
+  - release
+
+variables:
+  DOCKER_IMAGE: f7lans-server
+  DOCKER_REGISTRY: $CI_REGISTRY
+  NODE_VERSION: "20"
+
+# Cache node_modules between jobs
+.node_cache: &node_cache
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - electron-client/node_modules/
+
+# ============================================
+# Windows Client Build (using Wine on Debian)
+# ============================================
+build:windows-client:
+  stage: build
+  image: electronuserland/builder:wine
+  tags:
+    - debian
+  <<: *node_cache
+  before_script:
+    - node --version
+    - npm --version
+  script:
+    # Install root dependencies (for server bundling)
+    - npm ci
+    # Install electron-client dependencies
+    - cd electron-client
+    - npm ci
+    # Copy server files for unified build
+    - npm run copy-server
+    # Build Windows installer and portable
+    - npm run build:win
+  artifacts:
+    name: "f7lans-windows-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - electron-client/dist/*.exe
+      - electron-client/dist/*.msi
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Windows unified build (client + embedded server)
+build:windows-unified:
+  stage: build
+  image: electronuserland/builder:wine
+  tags:
+    - debian
+  <<: *node_cache
+  before_script:
+    - node --version
+    - npm --version
+  script:
+    - npm ci
+    - cd electron-client
+    - npm ci
+    - npm run copy-server
+    - npm run build:win:unified
+  artifacts:
+    name: "f7lans-windows-unified-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - electron-client/dist/*Setup*.exe
+      - electron-client/dist/*.exe
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+
+# ============================================
+# Docker Container Build (Server)
+# ============================================
+build:docker-server:
+  stage: build
+  image: docker:24
+  tags:
+    - debian
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_DRIVER: overlay2
+  before_script:
+    - docker info
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
+  script:
+    # Build the server container
+    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile.server .
+    - docker tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA $DOCKER_IMAGE:latest
+    # Push to registry if available
+    - |
+      if [ -n "$CI_REGISTRY" ]; then
+        docker tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+        docker tag $DOCKER_IMAGE:latest $CI_REGISTRY_IMAGE:latest
+        docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+        docker push $CI_REGISTRY_IMAGE:latest
+      fi
+    # Save image as artifact
+    - docker save $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA | gzip > f7lans-server-$CI_COMMIT_SHORT_SHA.tar.gz
+  artifacts:
+    name: "f7lans-server-docker-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - f7lans-server-*.tar.gz
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Build web client container
+build:docker-webclient:
+  stage: build
+  image: docker:24
+  tags:
+    - debian
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2376
+  before_script:
+    - docker info
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
+  script:
+    - docker build -t f7lans-webclient:$CI_COMMIT_SHORT_SHA -f docker/Dockerfile.webclient .
+    - docker tag f7lans-webclient:$CI_COMMIT_SHORT_SHA f7lans-webclient:latest
+    - |
+      if [ -n "$CI_REGISTRY" ]; then
+        docker tag f7lans-webclient:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE/webclient:$CI_COMMIT_SHORT_SHA
+        docker tag f7lans-webclient:latest $CI_REGISTRY_IMAGE/webclient:latest
+        docker push $CI_REGISTRY_IMAGE/webclient:$CI_COMMIT_SHORT_SHA
+        docker push $CI_REGISTRY_IMAGE/webclient:latest
+      fi
+    - docker save f7lans-webclient:$CI_COMMIT_SHORT_SHA | gzip > f7lans-webclient-$CI_COMMIT_SHORT_SHA.tar.gz
+  artifacts:
+    name: "f7lans-webclient-docker-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - f7lans-webclient-*.tar.gz
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+
+# ============================================
+# Linux Client Build
+# ============================================
+build:linux-client:
+  stage: build
+  image: electronuserland/builder:18
+  tags:
+    - debian
+  <<: *node_cache
+  script:
+    - npm ci
+    - cd electron-client
+    - npm ci
+    - npm run copy-server
+    - npm run build:linux:unified
+  artifacts:
+    name: "f7lans-linux-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - electron-client/dist/*.AppImage
+      - electron-client/dist/*.deb
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+
+# ============================================
+# Release Job (on tags)
+# ============================================
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  tags:
+    - debian
+  needs:
+    - job: build:windows-client
+      artifacts: true
+    - job: build:docker-server
+      artifacts: true
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "F7Lans $CI_COMMIT_TAG"
+    description: "Release $CI_COMMIT_TAG"
+    assets:
+      links:
+        - name: "Windows Installer"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/electron-client/dist/F7Lans-Setup.exe"
+        - name: "Docker Server Image"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/f7lans-server-${CI_COMMIT_SHORT_SHA}.tar.gz"
+  rules:
+    - if: $CI_COMMIT_TAG
