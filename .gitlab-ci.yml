@@ -90,24 +90,26 @@ build:docker-server:
   stage: build
   tags:
     - debian
+  variables:
+    STORAGE_DRIVER: vfs
   before_script:
     - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
-    # Build server image
-    - buildah bud -t f7lans-server:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.server .
-    - buildah tag f7lans-server:${CI_COMMIT_SHORT_SHA} f7lans-server:latest
+    # Build server image (using vfs storage driver - no fuse required)
+    - buildah --storage-driver=vfs bud -t f7lans-server:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.server .
+    - buildah --storage-driver=vfs tag f7lans-server:${CI_COMMIT_SHORT_SHA} f7lans-server:latest
     # Push to registry if configured
     - |
       if [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ]; then
-        buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-        buildah tag f7lans-server:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
-        buildah tag f7lans-server:latest ${CI_REGISTRY_IMAGE}:latest
-        buildah push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
-        buildah push ${CI_REGISTRY_IMAGE}:latest
+        buildah --storage-driver=vfs login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+        buildah --storage-driver=vfs tag f7lans-server:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+        buildah --storage-driver=vfs tag f7lans-server:latest ${CI_REGISTRY_IMAGE}:latest
+        buildah --storage-driver=vfs push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+        buildah --storage-driver=vfs push ${CI_REGISTRY_IMAGE}:latest
       fi
     # Save image as portable tarball
-    - buildah push f7lans-server:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
+    - buildah --storage-driver=vfs push f7lans-server:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
     - gzip f7lans-server-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-server-docker-${CI_COMMIT_SHORT_SHA}"
@@ -124,21 +126,23 @@ build:docker-webclient:
   stage: build
   tags:
     - debian
+  variables:
+    STORAGE_DRIVER: vfs
   before_script:
     - which buildah || (apt-get update && apt-get install -y buildah)
     - buildah --version
   script:
-    - buildah bud -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
-    - buildah tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} f7lans-webclient:latest
+    - buildah --storage-driver=vfs bud -t f7lans-webclient:${CI_COMMIT_SHORT_SHA} -f docker/Dockerfile.webclient .
+    - buildah --storage-driver=vfs tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} f7lans-webclient:latest
     - |
       if [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ]; then
-        buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-        buildah tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
-        buildah tag f7lans-webclient:latest ${CI_REGISTRY_IMAGE}/webclient:latest
-        buildah push ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
-        buildah push ${CI_REGISTRY_IMAGE}/webclient:latest
+        buildah --storage-driver=vfs login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+        buildah --storage-driver=vfs tag f7lans-webclient:${CI_COMMIT_SHORT_SHA} ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
+        buildah --storage-driver=vfs tag f7lans-webclient:latest ${CI_REGISTRY_IMAGE}/webclient:latest
+        buildah --storage-driver=vfs push ${CI_REGISTRY_IMAGE}/webclient:${CI_COMMIT_SHORT_SHA}
+        buildah --storage-driver=vfs push ${CI_REGISTRY_IMAGE}/webclient:latest
       fi
-    - buildah push f7lans-webclient:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
+    - buildah --storage-driver=vfs push f7lans-webclient:${CI_COMMIT_SHORT_SHA} oci-archive:f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
     - gzip f7lans-webclient-${CI_COMMIT_SHORT_SHA}.tar
   artifacts:
     name: "f7lans-webclient-docker-${CI_COMMIT_SHORT_SHA}"
