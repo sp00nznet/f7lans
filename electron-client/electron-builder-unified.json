@@ -47,8 +47,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "F7Lans",
-    "include": "installer.nsh"
+    "shortcutName": "F7Lans"
   },
   "extraMetadata": {
     "embeddedServer": true
