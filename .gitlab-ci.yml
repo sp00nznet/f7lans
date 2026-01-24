@@ -20,9 +20,11 @@ variables:
       - electron-client/node_modules/
 
 # ============================================
-# Windows Client Build (using Wine on Debian)
+# Windows Client Builds (using Wine on Debian)
 # ============================================
-build:windows-client:
+
+# Remote Client - connects to external server (no embedded server)
+build:windows-client-remote:
   stage: build
   image: electronuserland/builder:wine
   tags:
@@ -32,20 +34,15 @@ build:windows-client:
     - node --version
     - npm --version
   script:
-    # Install root dependencies (for server bundling)
-    - npm ci
-    # Install electron-client dependencies
+    # Install electron-client dependencies only (no server needed)
     - cd electron-client
     - npm ci
-    # Copy server files for unified build
-    - npm run copy-server
-    # Build Windows installer and portable
+    # Build Windows installer and portable (remote client only)
     - npm run build:win
   artifacts:
-    name: "f7lans-windows-${CI_COMMIT_SHORT_SHA}"
+    name: "f7lans-windows-remote-client-${CI_COMMIT_SHORT_SHA}"
     paths:
       - electron-client/dist/*.exe
-      - electron-client/dist/*.msi
     expire_in: 30 days
   rules:
     - if: $CI_COMMIT_TAG
@@ -54,8 +51,8 @@ build:windows-client:
       allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "web"
 
-# Windows unified build (client + embedded server)
-build:windows-unified:
+# Standalone Client - includes embedded server (all-in-one)
+build:windows-client-standalone:
   stage: build
   image: electronuserland/builder:wine
   tags:
@@ -65,15 +62,18 @@ build:windows-unified:
     - node --version
     - npm --version
   script:
+    # Install root dependencies (needed for server bundling)
     - npm ci
+    # Install electron-client dependencies
     - cd electron-client
     - npm ci
+    # Copy server files into client for embedded mode
     - npm run copy-server
+    # Build Windows installer with embedded server
     - npm run build:win:unified
   artifacts:
-    name: "f7lans-windows-unified-${CI_COMMIT_SHORT_SHA}"
+    name: "f7lans-windows-standalone-${CI_COMMIT_SHORT_SHA}"
     paths:
-      - electron-client/dist/*Setup*.exe
       - electron-client/dist/*.exe
     expire_in: 30 days
   rules:
@@ -81,6 +81,7 @@ build:windows-unified:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual
       allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 # ============================================
 # Docker Container Build (Server)
@@ -160,9 +161,34 @@ build:docker-webclient:
       allow_failure: true
 
 # ============================================
-# Linux Client Build
+# Linux Client Builds
 # ============================================
-build:linux-client:
+
+# Remote Client - connects to external server
+build:linux-client-remote:
+  stage: build
+  image: electronuserland/builder:18
+  tags:
+    - debian
+  <<: *node_cache
+  script:
+    - cd electron-client
+    - npm ci
+    - npm run build:linux
+  artifacts:
+    name: "f7lans-linux-remote-client-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - electron-client/dist/*.AppImage
+      - electron-client/dist/*.deb
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+
+# Standalone Client - includes embedded server
+build:linux-client-standalone:
   stage: build
   image: electronuserland/builder:18
   tags:
@@ -175,7 +201,7 @@ build:linux-client:
     - npm run copy-server
     - npm run build:linux:unified
   artifacts:
-    name: "f7lans-linux-${CI_COMMIT_SHORT_SHA}"
+    name: "f7lans-linux-standalone-${CI_COMMIT_SHORT_SHA}"
     paths:
       - electron-client/dist/*.AppImage
       - electron-client/dist/*.deb
@@ -195,21 +221,35 @@ release:
   tags:
     - debian
   needs:
-    - job: build:windows-client
+    - job: build:windows-client-remote
+      artifacts: true
+    - job: build:windows-client-standalone
       artifacts: true
     - job: build:docker-server
       artifacts: true
   script:
     - echo "Creating release for $CI_COMMIT_TAG"
+    - ls -la electron-client/dist/ || true
   release:
     tag_name: $CI_COMMIT_TAG
     name: "F7Lans $CI_COMMIT_TAG"
-    description: "Release $CI_COMMIT_TAG"
+    description: |
+      ## F7Lans Release $CI_COMMIT_TAG
+
+      ### Downloads
+      - **Windows Remote Client** - Connects to an external F7Lans server
+      - **Windows Standalone** - All-in-one with embedded server
+      - **Docker Server** - Containerized server deployment
     assets:
       links:
-        - name: "Windows Installer"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/electron-client/dist/F7Lans-Setup.exe"
+        - name: "Windows Remote Client"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/download?job=build:windows-client-remote"
+          link_type: package
+        - name: "Windows Standalone (with Server)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/download?job=build:windows-client-standalone"
+          link_type: package
         - name: "Docker Server Image"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/f7lans-server-${CI_COMMIT_SHORT_SHA}.tar.gz"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/download?job=build:docker-server"
+          link_type: package
   rules:
     - if: $CI_COMMIT_TAG
