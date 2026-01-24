@@ -1,5 +1,5 @@
 # F7Lans Server Dockerfile
-FROM node:20-alpine
+FROM docker.io/library/node:20-alpine
 
 # Set working directory
 WORKDIR /app

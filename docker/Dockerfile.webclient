@@ -1,5 +1,5 @@
 # F7Lans Web Client Dockerfile
-FROM nginx:alpine
+FROM docker.io/library/nginx:alpine
 
 # Copy nginx configuration template
 COPY docker/nginx-webclient.conf.template /etc/nginx/nginx.conf.template
