@@ -20,24 +20,24 @@ variables:
       - electron-client/node_modules/
 
 # ============================================
-# Windows Client Builds (using Wine on Debian)
+# Windows Client Builds (native Windows runner)
 # ============================================
 
 # Remote Client - connects to external server (no embedded server)
 build:windows-client-remote:
   stage: build
-  image: electronuserland/builder:wine
   tags:
-    - debian
-  <<: *node_cache
+    - windows
+  cache:
+    key: windows-${CI_COMMIT_REF_SLUG}
+    paths:
+      - electron-client/node_modules/
   before_script:
     - node --version
     - npm --version
   script:
-    # Install electron-client dependencies only (no server needed)
     - cd electron-client
     - npm ci
-    # Build Windows installer and portable (remote client only)
     - npm run build:win
   artifacts:
     name: "f7lans-windows-remote-client-${CI_COMMIT_SHORT_SHA}"
@@ -54,22 +54,21 @@ build:windows-client-remote:
 # Standalone Client - includes embedded server (all-in-one)
 build:windows-client-standalone:
   stage: build
-  image: electronuserland/builder:wine
   tags:
-    - debian
-  <<: *node_cache
+    - windows
+  cache:
+    key: windows-standalone-${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - electron-client/node_modules/
   before_script:
     - node --version
     - npm --version
   script:
-    # Install root dependencies (needed for server bundling)
     - npm ci
-    # Install electron-client dependencies
     - cd electron-client
     - npm ci
-    # Copy server files into client for embedded mode
     - npm run copy-server
-    # Build Windows installer with embedded server
     - npm run build:win:unified
   artifacts:
     name: "f7lans-windows-standalone-${CI_COMMIT_SHORT_SHA}"
