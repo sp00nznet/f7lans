@@ -119,9 +119,185 @@ async function init() {
   // Set up form handler
   document.getElementById('connectionForm').addEventListener('submit', handleConnect);
 
+  // Set up Google sign-in button
+  document.getElementById('googleSignInBtn').addEventListener('click', handleGoogleSignIn);
+
+  // Check for Google OAuth callback
+  checkGoogleAuthCallback();
+
+  // Check if server URL is entered, then check Google auth status
+  document.getElementById('serverUrl').addEventListener('change', checkGoogleAuthStatus);
+  document.getElementById('serverUrl').addEventListener('blur', checkGoogleAuthStatus);
+
   // Set up in-window PTT keyboard handling
   // PTT only works when window is focused (safer than global hotkeys)
   setupPTTKeyboard();
+}
+
+// Check if Google auth is enabled on the server
+async function checkGoogleAuthStatus() {
+  const serverUrl = document.getElementById('serverUrl').value.trim();
+  const googleBtn = document.getElementById('googleSignInBtn');
+  const divider = document.getElementById('oauthDivider');
+
+  if (!serverUrl) {
+    googleBtn.style.display = 'none';
+    divider.style.display = 'none';
+    return;
+  }
+
+  try {
+    const response = await fetch(`${serverUrl}/api/auth/google/status`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.enabled) {
+        googleBtn.style.display = 'flex';
+        divider.style.display = 'flex';
+      } else {
+        googleBtn.style.display = 'none';
+        divider.style.display = 'none';
+      }
+    } else {
+      googleBtn.style.display = 'none';
+      divider.style.display = 'none';
+    }
+  } catch (error) {
+    // Server not reachable or Google auth not available
+    googleBtn.style.display = 'none';
+    divider.style.display = 'none';
+  }
+}
+
+// Handle Google sign-in button click
+async function handleGoogleSignIn() {
+  const serverUrl = document.getElementById('serverUrl').value.trim();
+  if (!serverUrl) {
+    showError('Please enter a server address first');
+    return;
+  }
+
+  try {
+    // Get the Google auth URL from the server
+    const response = await fetch(`${serverUrl}/api/auth/google?baseUrl=${encodeURIComponent(serverUrl)}`);
+    if (!response.ok) {
+      const error = await response.json();
+      showError(error.error || 'Failed to start Google sign-in');
+      return;
+    }
+
+    const data = await response.json();
+
+    // Store the server URL for the callback
+    if (window.electronAPI) {
+      await window.electronAPI.saveSettings({ pendingGoogleAuthServer: serverUrl });
+    } else {
+      sessionStorage.setItem('pendingGoogleAuthServer', serverUrl);
+    }
+
+    // Open Google auth in system browser (Electron) or redirect (web)
+    if (window.electronAPI && window.electronAPI.openExternal) {
+      // Add callback URL that the server can use
+      const authUrl = data.url + '&state=' + encodeURIComponent(serverUrl);
+      window.electronAPI.openExternal(authUrl);
+    } else {
+      // Web fallback - redirect directly
+      window.location.href = data.url;
+    }
+  } catch (error) {
+    console.error('Google sign-in error:', error);
+    showError('Failed to start Google sign-in');
+  }
+}
+
+// Check for Google OAuth callback (when returning from Google)
+async function checkGoogleAuthCallback() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const googleAuth = urlParams.get('googleAuth');
+  const token = urlParams.get('token');
+
+  if (googleAuth === 'success' && token) {
+    // Clear the URL parameters
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Get the server URL from storage
+    let serverUrl;
+    if (window.electronAPI) {
+      const settings = await window.electronAPI.getSettings();
+      serverUrl = settings.pendingGoogleAuthServer;
+    } else {
+      serverUrl = sessionStorage.getItem('pendingGoogleAuthServer');
+    }
+
+    if (serverUrl) {
+      // Complete the login with the token
+      await completeGoogleLogin(serverUrl, token);
+    }
+  }
+}
+
+// Complete Google login with the received token
+async function completeGoogleLogin(serverUrl, token) {
+  try {
+    // Verify the token and get user info
+    const response = await fetch(`${serverUrl}/api/auth/me`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      showError('Failed to verify Google login');
+      return;
+    }
+
+    const data = await response.json();
+
+    // Store credentials
+    state.serverUrl = serverUrl;
+    state.token = token;
+    state.user = data.user;
+
+    // Save to electron store if available
+    if (window.electronAPI) {
+      const serverId = generateServerId(serverUrl);
+      const newServer = {
+        id: serverId,
+        url: serverUrl,
+        token: token,
+        username: data.user.username,
+        name: new URL(serverUrl).hostname
+      };
+
+      // Add or update server in list
+      const existingIndex = state.servers.findIndex(s => s.url === serverUrl);
+      if (existingIndex >= 0) {
+        state.servers[existingIndex] = newServer;
+      } else {
+        state.servers.push(newServer);
+      }
+
+      state.currentServerId = serverId;
+
+      await window.electronAPI.saveSettings({
+        serverUrl,
+        token,
+        servers: state.servers,
+        pendingGoogleAuthServer: null
+      });
+    }
+
+    // Connect to server
+    connectSocket();
+    showMainApp();
+  } catch (error) {
+    console.error('Complete Google login error:', error);
+    showError('Failed to complete Google login');
+  }
+}
+
+// Generate a unique server ID
+function generateServerId(url) {
+  return btoa(url).replace(/[^a-zA-Z0-9]/g, '').substring(0, 12);
 }
 
 // Set up push-to-talk keyboard handling within the window

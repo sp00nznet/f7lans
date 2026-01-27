@@ -23,6 +23,7 @@ const steamAuthController = require('../controllers/steamAuthController');
 const serverSettingsController = require('../controllers/serverSettingsController');
 const twoFactorController = require('../controllers/twoFactorController');
 const attachmentController = require('../controllers/attachmentController');
+const googleAuthController = require('../controllers/googleAuthController');
 const twitchBotController = require('../controllers/twitchBotController');
 const imageSearchBotController = require('../controllers/imageSearchBotController');
 const starCitizenBotController = require('../controllers/starCitizenBotController');
@@ -114,6 +115,13 @@ router.get('/auth/me', authenticate, authController.getMe);
 router.put('/auth/profile', authenticate, authController.updateProfile);
 router.put('/auth/password', authenticate, authController.changePassword);
 router.post('/auth/logout', authenticate, authController.logout);
+
+// Google OAuth
+router.get('/auth/google/status', googleAuthController.getGoogleAuthStatus);
+router.get('/auth/google', googleAuthController.getGoogleAuthUrl);
+router.get('/auth/google/callback', googleAuthController.handleGoogleCallback);
+router.post('/auth/google/link', authenticate, googleAuthController.linkGoogleAccount);
+router.delete('/auth/google/unlink', authenticate, googleAuthController.unlinkGoogleAccount);
 
 // ===== User Routes =====
 router.get('/users/:userId', authenticate, userController.getProfile);

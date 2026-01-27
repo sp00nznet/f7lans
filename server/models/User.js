@@ -24,7 +24,10 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: function() {
+      // Password not required for OAuth users
+      return !this.googleId;
+    },
     minlength: 6
   },
   avatar: {
@@ -58,6 +61,12 @@ const userSchema = new mongoose.Schema({
   steamVerified: {
     type: Boolean,
     default: false
+  },
+  // Google OAuth
+  googleId: {
+    type: String,
+    default: null,
+    sparse: true
   },
   // Social account links
   socialAccounts: {

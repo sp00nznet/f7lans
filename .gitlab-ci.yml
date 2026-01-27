@@ -1,5 +1,9 @@
 # F7Lans GitLab CI/CD Pipeline
 # Builds Windows client and containerized server
+#
+# Optional CI/CD Variables (set in GitLab Settings > CI/CD > Variables):
+#   GOOGLE_CLIENT_ID     - Google OAuth Client ID for sign-in
+#   GOOGLE_CLIENT_SECRET - Google OAuth Client Secret
 
 stages:
   - build
