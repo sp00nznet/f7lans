@@ -279,14 +279,111 @@ async function init() {
       state.serverUrl = '';
     }
     document.getElementById('serverUrl').value = state.serverUrl;
+
+    // Try to resume a saved web session. If a Google OAuth callback is in the URL
+    // (?googleAuth=success&token=...), let setupGoogleAuth() handle that instead — it
+    // runs after this and will overwrite state.token with the fresh one from the callback.
+    const callbackParams = new URLSearchParams(window.location.search);
+    const isGoogleCallback = callbackParams.get('googleAuth') === 'success';
+    if (!isGoogleCallback) {
+      const saved = loadWebSession();
+      if (saved.token) {
+        state.token = saved.token;
+        if (saved.serverUrl) state.serverUrl = saved.serverUrl;
+        tryAutoLogin();
+      }
+    }
   }
 
   // Set up form handler
   document.getElementById('connectionForm').addEventListener('submit', handleConnect);
 
+  // Set up Google OAuth (shows button if server has it enabled, handles callback)
+  setupGoogleAuth();
+
   // Set up in-window PTT keyboard handling
   // PTT only works when window is focused (safer than global hotkeys)
   setupPTTKeyboard();
+}
+
+// Set up Google OAuth: handle callback redirect, show button if enabled, wire click handler
+async function setupGoogleAuth() {
+  // If we just came back from Google's callback, the server redirected with ?googleAuth=success&token=...
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('googleAuth') === 'success' && params.get('token')) {
+    const token = params.get('token');
+    // Clean the URL so a refresh doesn't replay the token
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    state.token = token;
+    try {
+      const meRes = await fetch(`${state.serverUrl}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (meRes.ok) {
+        const data = await meRes.json();
+        state.user = data.user;
+        if (window.electronAPI) {
+          await window.electronAPI.saveToken(token);
+        } else {
+          // Google sign-in always persists on the web — the user already opted in by
+          // clicking the button, and re-doing the full OAuth dance on every reload
+          // is worse UX than the implicit "remember me" the username/password form has.
+          saveWebSession(token, state.serverUrl);
+        }
+        showMainApp();
+        connectSocket();
+        return;
+      }
+    } catch (err) {
+      console.error('Google auth: failed to fetch user after callback', err);
+    }
+    // Fall through to login screen if /auth/me failed
+    state.token = null;
+    const errorEl = document.getElementById('errorMessage');
+    if (errorEl) errorEl.textContent = 'Google sign-in completed but session is invalid. Try again.';
+  } else if (params.get('googleAuth') === 'error') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    const errorEl = document.getElementById('errorMessage');
+    if (errorEl) errorEl.textContent = 'Google sign-in failed.';
+  }
+
+  // Ask server whether Google OAuth is configured. If yes, reveal the button.
+  try {
+    const statusRes = await fetch(`${state.serverUrl}/api/auth/google/status`);
+    if (!statusRes.ok) return;
+    const status = await statusRes.json();
+    if (!status.enabled) return;
+
+    const section = document.getElementById('googleAuthSection');
+    const btn = document.getElementById('googleSignInBtn');
+    if (!section || !btn) return;
+    section.style.display = '';
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const errorEl = document.getElementById('errorMessage');
+      if (errorEl) errorEl.textContent = '';
+      try {
+        // Pass baseUrl explicitly — behind Cloudflare Tunnel the server sees http://, not https://,
+        // so the callback URL it builds wouldn't match Google's registered redirect URI without this.
+        const origin = window.location.origin;
+        const urlRes = await fetch(
+          `${state.serverUrl}/api/auth/google?baseUrl=${encodeURIComponent(origin)}`
+        );
+        if (!urlRes.ok) throw new Error('Failed to start Google sign-in');
+        const { url } = await urlRes.json();
+        window.location.href = url;
+      } catch (err) {
+        console.error('Google sign-in failed to start', err);
+        if (errorEl) errorEl.textContent = err.message || 'Google sign-in failed.';
+        btn.disabled = false;
+      }
+    });
+  } catch (err) {
+    // Server unreachable or no Google endpoint — silently leave button hidden
+    console.debug('Google auth status check failed (button stays hidden):', err);
+  }
 }
 
 // Set up push-to-talk keyboard handling within the window
@@ -368,6 +465,41 @@ function setupIPCListeners() {
   });
 }
 
+// Web-client session persistence (Electron has its own electron-store path)
+const WEB_TOKEN_KEY = 'f7lans_token';
+const WEB_SERVER_URL_KEY = 'f7lans_serverUrl';
+
+function saveWebSession(token, serverUrl) {
+  try {
+    localStorage.setItem(WEB_TOKEN_KEY, token);
+    if (serverUrl !== undefined && serverUrl !== null) {
+      localStorage.setItem(WEB_SERVER_URL_KEY, serverUrl);
+    }
+  } catch (e) {
+    console.warn('Could not persist session (storage unavailable):', e);
+  }
+}
+
+function loadWebSession() {
+  try {
+    return {
+      token: localStorage.getItem(WEB_TOKEN_KEY),
+      serverUrl: localStorage.getItem(WEB_SERVER_URL_KEY)
+    };
+  } catch (e) {
+    return { token: null, serverUrl: null };
+  }
+}
+
+function clearWebSession() {
+  try {
+    localStorage.removeItem(WEB_TOKEN_KEY);
+    localStorage.removeItem(WEB_SERVER_URL_KEY);
+  } catch (e) {
+    // ignore
+  }
+}
+
 // Try auto login with saved token
 async function tryAutoLogin() {
   try {
@@ -384,6 +516,8 @@ async function tryAutoLogin() {
       // Token invalid, clear it
       if (window.electronAPI) {
         await window.electronAPI.clearToken();
+      } else {
+        clearWebSession();
       }
       state.token = null;
     }
@@ -433,6 +567,8 @@ async function handleConnect(e) {
     if (window.electronAPI && rememberMe) {
       await window.electronAPI.saveToken(data.token);
       await window.electronAPI.setServerUrl(cleanUrl);
+    } else if (!window.electronAPI && rememberMe) {
+      saveWebSession(data.token, cleanUrl);
     }
 
     // Show main app
@@ -5285,6 +5421,8 @@ function disconnect() {
 
   if (window.electronAPI) {
     window.electronAPI.clearToken();
+  } else {
+    clearWebSession();
   }
 
   state.user = null;
