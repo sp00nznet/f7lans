@@ -17,6 +17,11 @@ const Channel = require('./models/Channel');
 
 const app = express();
 
+// Trust upstream proxy (nginx in webclient container, Cloudflare tunnel) so req.protocol
+// reflects X-Forwarded-Proto. Without this, Google OAuth's redirect_uri exchange fails
+// behind any HTTPS-terminating proxy (we'd send https:// to Google but rebuild http:// here).
+app.set('trust proxy', true);
+
 // Configuration
 const PORT = process.env.PORT || 3001;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
