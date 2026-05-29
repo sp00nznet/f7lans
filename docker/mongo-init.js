@@ -8,7 +8,10 @@ db.createCollection('users', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['username', 'email', 'password'],
+      // password is intentionally NOT required: OAuth (Google) users have no
+      // password. The Mongoose model enforces "password required unless googleId"
+      // at the app layer; the DB validator only guards the always-present fields.
+      required: ['username', 'email'],
       properties: {
         username: {
           bsonType: 'string',
@@ -19,10 +22,10 @@ db.createCollection('users', {
           bsonType: 'string'
         },
         password: {
-          bsonType: 'string'
+          bsonType: ['string', 'null']
         },
         role: {
-          enum: ['user', 'admin', 'superadmin']
+          enum: ['user', 'moderator', 'admin', 'superadmin']
         }
       }
     }
