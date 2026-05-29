@@ -12,6 +12,17 @@ const isGoogleAuthEnabled = () => {
   return !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 };
 
+// Resolve the externally-visible base URL for building the OAuth redirect_uri.
+// This MUST be identical at the authorize and token-exchange steps or Google
+// returns redirect_uri_mismatch. Behind a TLS-terminating proxy chain
+// (Cloudflare tunnel -> nginx -> server) req.protocol is an unreliable "http",
+// and req.query.baseUrl isn't preserved across Google's round trip, so neither
+// can be the source of truth. Prefer an explicitly configured public URL.
+const getPublicBaseUrl = (req) =>
+  process.env.OAUTH_PUBLIC_URL ||
+  process.env.CLIENT_URL ||
+  `${req.protocol}://${req.get('host')}`;
+
 // Get Google OAuth status (for client to know if button should be shown)
 const getGoogleAuthStatus = (req, res) => {
   res.json({
@@ -26,7 +37,7 @@ const getGoogleAuthUrl = (req, res) => {
     return res.status(503).json({ error: 'Google authentication is not configured' });
   }
 
-  const baseUrl = req.query.baseUrl || `${req.protocol}://${req.get('host')}`;
+  const baseUrl = getPublicBaseUrl(req);
   const callbackUrl = `${baseUrl}${GOOGLE_CALLBACK_URL}`;
 
   const params = new URLSearchParams({
@@ -56,7 +67,7 @@ const handleGoogleCallback = async (req, res) => {
       return res.status(400).json({ error: 'Authorization code is required' });
     }
 
-    const baseUrl = req.query.baseUrl || `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getPublicBaseUrl(req);
     const callbackUrl = `${baseUrl}${GOOGLE_CALLBACK_URL}`;
 
     // Exchange code for tokens
@@ -193,13 +204,13 @@ const linkGoogleAccount = async (req, res) => {
       return res.status(503).json({ error: 'Google authentication is not configured' });
     }
 
-    const { code, baseUrl } = req.body;
+    const { code } = req.body;
 
     if (!code) {
       return res.status(400).json({ error: 'Authorization code is required' });
     }
 
-    const callbackUrl = `${baseUrl || `${req.protocol}://${req.get('host')}`}${GOOGLE_CALLBACK_URL}`;
+    const callbackUrl = `${getPublicBaseUrl(req)}${GOOGLE_CALLBACK_URL}`;
 
     // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
