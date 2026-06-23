@@ -301,6 +301,9 @@ async function init() {
   // Set up Google OAuth (shows button if server has it enabled, handles callback)
   setupGoogleAuth();
 
+  // Populate the Ember login extras (server address display + recent servers)
+  renderLoginExtras();
+
   // Set up in-window PTT keyboard handling
   // PTT only works when window is focused (safer than global hotkeys)
   setupPTTKeyboard();
@@ -384,6 +387,47 @@ async function setupGoogleAuth() {
     // Server unreachable or no Google endpoint — silently leave button hidden
     console.debug('Google auth status check failed (button stays hidden):', err);
   }
+}
+
+// Fill the Ember login screen's server-address field and recent-servers list
+function renderLoginExtras() {
+  const addrEl = document.getElementById('serverAddress');
+  if (addrEl) {
+    let host = '';
+    try {
+      const raw = state.serverUrl || window.location.origin;
+      host = new URL(raw, window.location.origin).host;
+    } catch { host = window.location.host; }
+    addrEl.value = host || '';
+  }
+
+  const list = document.getElementById('recentServers');
+  const divider = document.querySelector('.recent-divider');
+  if (!list) return;
+
+  const servers = state.servers || [];
+  if (!servers.length) {
+    list.innerHTML = '';
+    if (divider) divider.style.display = 'none';
+    return;
+  }
+  if (divider) divider.style.display = '';
+
+  list.innerHTML = servers.map((s, i) => {
+    const tag = (s.icon || s.name || '?').substring(0, 2).toUpperCase();
+    const color = getServerColor(s, i);
+    let host = s.url || '';
+    try { host = new URL(s.url, window.location.origin).host; } catch {}
+    return `
+      <button type="button" class="recent-server" onclick="switchServer('${s.id}')">
+        <div class="tag" style="background:${color};">${escapeHtml(tag)}</div>
+        <div class="meta">
+          <div class="name">${escapeHtml(s.name || 'Server')}</div>
+          <div class="addr">${escapeHtml(host)}</div>
+        </div>
+        <div class="online"><div class="n">●</div><div class="lbl">saved</div></div>
+      </button>`;
+  }).join('');
 }
 
 // Set up push-to-talk keyboard handling within the window
@@ -853,33 +897,45 @@ function renderMainApp() {
   const currentServer = state.servers.find(s => s.id === state.currentServerId);
   const serverName = currentServer?.name || 'F7Lans';
 
+  const userInitial = (state.user?.displayName || state.user?.username || 'U')[0].toUpperCase();
+  const userActivity = state.user?.customStatus || 'Online';
+
   mainApp.innerHTML = `
     <nav class="server-list">
-      ${state.servers.map(server => `
+      <div class="rail-home coal" title="Home · Direct Messages" onclick="goHome()"></div>
+      <div class="rail-label">NET</div>
+      ${state.servers.map((server, i) => {
+        const tag = (server.icon || server.name.substring(0, 2)).toUpperCase().slice(0, 2);
+        const color = getServerColor(server, i);
+        return `
         <div class="server-icon ${server.id === state.currentServerId ? 'active' : ''}"
              title="${escapeHtml(server.name)}"
              onclick="switchServer('${server.id}')"
-             data-server-id="${server.id}">
-          ${server.icon || server.name.substring(0, 2).toUpperCase()}
-        </div>
-      `).join('')}
+             data-server-id="${server.id}" data-color="1"
+             style="--srv-color:${color};">
+          ${escapeHtml(tag)}
+        </div>`;
+      }).join('')}
       ${state.servers.length === 0 ? `
-        <div class="server-icon active" title="F7Lans Home">F7</div>
+        <div class="server-icon active" title="${escapeHtml(serverName)}" data-color="1" style="--srv-color:var(--ember);">${escapeHtml(serverName.substring(0,2).toUpperCase())}</div>
       ` : ''}
-      <div class="server-divider"></div>
       <div class="server-icon add-server" title="Add Server" onclick="openAddServerModal()">+</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-explore" title="Explore servers" onclick="openAddServerModal()">⌖</div>
     </nav>
 
     <aside class="channel-sidebar">
       <div class="server-header" onclick="openServerMenu(event)">
         <h2>${escapeHtml(serverName)}</h2>
-        <span>▼</span>
+        <span>⌄</span>
       </div>
+
+      <div class="sidebar-search">🔍 Search</div>
 
       <div class="channels-container" id="channelsList"></div>
 
       <div class="dm-section" id="dmSection">
-        <div class="channel-category"><span>▼</span><span>Direct Messages</span></div>
+        <div class="channel-category"><span>Direct Messages</span></div>
         <div id="dmUsersList"></div>
       </div>
 
@@ -892,26 +948,25 @@ function renderMainApp() {
           </div>
         </div>
         <div class="voice-controls">
-          <button class="voice-btn" id="muteBtn" onclick="toggleMute()" title="Mute">🎤</button>
+          <button class="voice-btn" id="muteBtn" onclick="toggleMute()" title="Mute">🎙</button>
           <button class="voice-btn" id="deafenBtn" onclick="toggleDeafen()" title="Deafen">🎧</button>
-          <button class="voice-btn" onclick="toggleScreenShare()" title="Share Screen">📺</button>
-          <button class="voice-btn disconnect" onclick="leaveVoice()" title="Disconnect">📞</button>
+          <button class="voice-btn" onclick="toggleScreenShare()" title="Share Screen">🖥</button>
+          <button class="voice-btn disconnect" onclick="leaveVoice()" title="Disconnect">⏏</button>
         </div>
       </div>
 
       <div class="user-panel">
         <div class="user-avatar" onclick="openSettings()">
-          ${state.user?.avatar ? `<img src="${state.user.avatar}">` : (state.user?.displayName || state.user?.username || 'U')[0].toUpperCase()}
+          ${state.user?.avatar ? `<img src="${state.user.avatar}">` : userInitial}
           <div class="status-indicator online"></div>
         </div>
         <div class="user-info">
-          <div class="user-name">${state.user?.displayName || state.user?.username}</div>
-          <div class="user-tag">#${state.user?.username}</div>
+          <div class="user-name">${escapeHtml(state.user?.displayName || state.user?.username || 'User')}</div>
+          <div class="user-tag">${escapeHtml(userActivity)}</div>
         </div>
         <div class="user-controls">
-          <button class="user-btn" onclick="toggleMute()" title="Mute">🎤</button>
-          <button class="user-btn" onclick="toggleDeafen()" title="Deafen">🎧</button>
-          <button class="user-btn" onclick="openSettings()" title="Settings">⚙️</button>
+          <button class="user-btn" onclick="toggleMute()" title="Mute">🎙</button>
+          <button class="user-btn" onclick="openSettings()" title="Settings">⚙</button>
         </div>
       </div>
     </aside>
@@ -922,63 +977,73 @@ function renderMainApp() {
         <h3 id="channelName">general</h3>
         <div class="divider"></div>
         <span class="description" id="channelDescription"></span>
+        <div class="fed-pill" onclick="openFederationModal()"><span class="glyph">◈</span> Federation</div>
         <div class="header-actions">
           <button class="header-btn" id="chatFullscreenBtn" onclick="toggleChatFullscreen()" title="Fullscreen">⛶</button>
-          <button class="header-btn" onclick="showMembers()" title="Members">👥</button>
-          <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
+          <button class="header-btn" id="membersToggleBtn" onclick="toggleMembers()" title="Members">☰</button>
+          <button class="header-btn" onclick="openSettings()" title="Settings">⚙</button>
         </div>
       </header>
 
       <div class="messages-area" id="messagesArea"></div>
 
+      <div class="typing-indicator" id="typingIndicator" style="display:none;"></div>
+
       <div class="message-input-container">
         <div class="message-input-wrapper">
           <div class="input-actions-left">
-            <button class="input-btn" title="Attach Image" onclick="openFilePicker()">➕</button>
+            <button class="input-btn" title="Attach Image" onclick="openFilePicker()">+</button>
+            <span class="input-prefix" id="composerPrefix">[#general]</span>
           </div>
           <textarea class="message-input" id="messageInput"
-            placeholder="Message #general (drag images to attach)"
+            placeholder="Message #general"
             rows="1"
             onkeydown="handleInputKeyDown(event)"></textarea>
           <div class="input-actions-right">
-            <button class="input-btn" title="Emoji">😀</button>
+            <button class="input-btn" title="GIF">GIF</button>
+            <button class="input-btn" title="Emoji">☺</button>
+            <button class="send-btn" title="Send" onclick="sendMessage()">➤</button>
           </div>
         </div>
       </div>
     </main>
 
-    <aside class="voice-panel" id="voicePanel" style="display: none; min-width: 600px;">
+    <aside class="members-panel" id="membersPanel" style="display:none;">
+      <div id="membersList"></div>
+    </aside>
+
+    <aside class="voice-panel" id="voicePanel" style="display: none;">
       <div class="voice-panel-header">
+        <span style="font-family:var(--font-mono);color:var(--ember-light);">🔊</span>
         <h3 id="voicePanelTitle">Voice</h3>
+        <span class="voice-quality"><span style="width:6px;height:6px;border-radius:50%;background:var(--on);display:inline-block;"></span>Excellent · 24ms</span>
         <button class="header-btn" id="voicePanelFullscreenBtn" onclick="toggleVoicePanelFullscreen()" title="Fullscreen">⛶</button>
       </div>
       <div class="voice-panel-content" style="overflow-y: auto; flex: 1;">
-        <div id="videoGrid" class="video-grid" style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px; max-height: 50vh; overflow-y: auto;"></div>
+        <div id="videoGrid" class="video-grid" style="margin-bottom: 4px;"></div>
         <div class="voice-participants">
           <h4>In Voice — <span id="participantCount">0</span></h4>
           <div id="participantsList"></div>
         </div>
       </div>
-      <div class="voice-actions" style="grid-template-columns: repeat(5, 1fr);">
+      <div class="voice-actions">
         <button class="action-btn" id="micBtnPanel" onclick="toggleMute()">
-          <span class="icon">🎤</span>
-          <span class="label">Mute</span>
+          <span class="icon">🎙</span><span class="label">Mic</span>
+        </button>
+        <button class="action-btn" id="deafenBtnPanel" onclick="toggleDeafen()">
+          <span class="icon">🎧</span><span class="label">Deafen</span>
         </button>
         <button class="action-btn" id="camBtnPanel" onclick="toggleCamera()">
-          <span class="icon">📷</span>
-          <span class="label">Camera</span>
+          <span class="icon">🎥</span><span class="label">Camera</span>
         </button>
-        <button class="action-btn" id="shareBtnPanel" onclick="toggleScreenShare()">
-          <span class="icon">📺</span>
-          <span class="label">Share</span>
+        <button class="action-btn primary" id="shareBtnPanel" onclick="toggleScreenShare()">
+          <span class="icon">🖥</span><span class="label">Share</span>
         </button>
         <button class="action-btn" onclick="openBotsModal()">
-          <span class="icon">🤖</span>
-          <span class="label">Bots</span>
+          <span class="icon">🤖</span><span class="label">Bots</span>
         </button>
         <button class="action-btn danger" onclick="leaveVoice()">
-          <span class="icon">📞</span>
-          <span class="label">Leave</span>
+          <span class="icon">⏏</span><span class="label">Leave</span>
         </button>
       </div>
     </aside>
@@ -1083,8 +1148,11 @@ async function selectChannel(channel) {
   // Update header with hash symbol for channel
   document.querySelector('.channel-header .hash').style.display = '';
   document.getElementById('channelName').textContent = channel.name;
-  document.getElementById('channelDescription').textContent = channel.description || '';
+  const topic = channel.topic || channel.description || '';
+  document.getElementById('channelDescription').textContent = topic ? `topic: ${topic}` : '';
   document.getElementById('messageInput').placeholder = `Message #${channel.name}`;
+  const prefix = document.getElementById('composerPrefix');
+  if (prefix) prefix.textContent = `[#${channel.name}]`;
 
   // Load messages
   await loadMessages(channel._id);
@@ -1129,7 +1197,7 @@ function renderDMUsers() {
   if (!container) return;
 
   if (state.dmConversations.length === 0) {
-    container.innerHTML = '<div style="padding: 8px 12px; color: var(--text-muted); font-size: 12px;">No conversations yet</div>';
+    container.innerHTML = '<div style="padding: 8px 16px; color: var(--txt-5); font-size: 12px;">No conversations yet</div>';
     return;
   }
 
@@ -1137,12 +1205,15 @@ function renderDMUsers() {
     const user = conv.user;
     if (!user) return '';
     const isActive = state.currentDMUser?._id === user._id;
+    const name = user.displayName || user.username || 'User';
     const unread = conv.unreadCount > 0 ? `<span class="dm-unread">${conv.unreadCount}</span>` : '';
+    const presence = user.presence || 'offline';
+    const preview = conv.lastMessagePreview || conv.preview || '';
 
     return `
       <div class="channel dm-user ${isActive ? 'active' : ''}" onclick="openDM('${user._id}')">
-        <span class="dm-avatar">${user.avatar ? `<img src="${user.avatar}" style="width: 24px; height: 24px; border-radius: 50%;">` : (user.displayName || user.username)[0].toUpperCase()}</span>
-        <span class="channel-name">${escapeHtml(user.displayName || user.username)}</span>
+        <span class="dm-avatar" style="background:${getAvatarColor(name)};">${user.avatar ? `<img src="${user.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">` : name[0].toUpperCase()}<span class="status-indicator ${presence}"></span></span>
+        <span class="channel-name" style="font-family:var(--font-ui);">${escapeHtml(name)}${preview ? `<div class="dm-preview">${escapeHtml(preview)}</div>` : ''}</span>
         ${unread}
       </div>
     `;
@@ -1172,10 +1243,12 @@ async function openDM(userId) {
 
   const userName = state.currentDMUser.displayName || state.currentDMUser.username || 'User';
   document.getElementById('channelName').textContent = '@' + userName;
-  document.getElementById('channelDescription').textContent = '🔒 End-to-end encrypted';
+  document.getElementById('channelDescription').innerHTML = '<span style="color:var(--on);font-family:var(--font-mono);font-size:11px;">● E2E ENCRYPTED</span>';
 
-  // Update input placeholder
-  document.getElementById('messageInput').placeholder = `Message @${userName} (encrypted)`;
+  // Update input placeholder + composer prefix
+  document.getElementById('messageInput').placeholder = `Message @${userName}`;
+  const prefix = document.getElementById('composerPrefix');
+  if (prefix) prefix.textContent = `[@${userName}]`;
 
   // Load messages
   await loadDMMessages(userId);
@@ -1216,35 +1289,31 @@ function renderDMMessages() {
   const container = document.getElementById('messagesArea');
   if (!container) return;
 
+  const peer = state.currentDMUser?.displayName || state.currentDMUser?.username || 'this user';
+
   if (state.dmMessages.length === 0) {
     container.innerHTML = `
-      <div class="no-messages">
-        <div class="lock-icon">🔒</div>
-        <h3>End-to-End Encrypted</h3>
-        <p>Messages are encrypted and only you and ${state.currentDMUser?.displayName || 'this user'} can read them.</p>
+      <div class="channel-intro">
+        <div class="intro-tile">🔒</div>
+        <h2>@${escapeHtml(peer)}</h2>
+        <p>This is the start of your <span style="color:var(--on);">end-to-end encrypted</span> direct messages. Even admins can't read these.</p>
       </div>
     `;
     return;
   }
 
   container.innerHTML = state.dmMessages.map(dm => {
-    const isMe = dm.sender._id === state.user._id || dm.sender === state.user._id;
+    const isMe = dm.sender?._id === state.user?._id || dm.sender === state.user?._id;
     const author = isMe ? state.user : (dm.sender || {});
-    const time = new Date(dm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const name = author.displayName || author.username || 'User';
+    const time = `[${new Date(dm.createdAt).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}]`;
+    const nickColor = getNickColor(author.username || name);
 
     return `
-      <div class="message ${isMe ? 'sent' : ''}">
-        <div class="message-avatar">
-          ${author.avatar ? `<img src="${author.avatar}">` : (author.displayName || author.username || 'U')[0].toUpperCase()}
-        </div>
-        <div class="message-content">
-          <div class="message-header">
-            <span class="author">${escapeHtml(author.displayName || author.username || 'User')}</span>
-            <span class="timestamp">${time}</span>
-            <span class="encrypted-badge" title="End-to-end encrypted">🔒</span>
-          </div>
-          <div class="message-text">${escapeHtml(dm.decryptedContent || '[Encrypted]')}</div>
-        </div>
+      <div class="msg-row dm">
+        <div class="msg-time">${time}</div>
+        <div class="msg-nick"><span class="nick" style="color:${nickColor};">${escapeHtml(name)}</span><span class="encrypted-badge" title="End-to-end encrypted">🔒</span></div>
+        <div class="msg-body"><div class="message-text">${escapeHtml(dm.decryptedContent || '[Encrypted]')}</div></div>
       </div>
     `;
   }).join('');
@@ -1312,52 +1381,74 @@ function startDMWithUser(userId, userName) {
 }
 
 // Render messages
+// Solid nick color (IRC-style colored handles) derived from the name
+function getNickColor(name) {
+  const palette = ['#FF6A2B', '#3D7BFF', '#19C37D', '#B86BFF', '#E8A33D', '#FF8A3D', '#4FCB6B'];
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return palette[Math.abs(hash) % palette.length];
+}
+
+// IRC mode prefix + role tag for an author
+function nickMeta(author) {
+  const role = author?.role || 'member';
+  const isBot = author?.isBot || author?.bot;
+  if (isBot) return { mode: '', modeClass: '', tag: 'bot', tagClass: 'bot' };
+  if (role === 'admin' || role === 'superadmin') return { mode: '@', modeClass: 'mode-op', tag: role === 'superadmin' ? 'admin' : 'op', tagClass: 'op' };
+  if (role === 'moderator') return { mode: '@', modeClass: 'mode-op', tag: 'op', tagClass: 'op' };
+  if (author?.voiced) return { mode: '+', modeClass: 'mode-voice', tag: '', tagClass: '' };
+  return { mode: '', modeClass: '', tag: '', tagClass: '' };
+}
+
 function renderMessages() {
   const container = document.getElementById('messagesArea');
   if (!container) return;
 
+  const chName = state.currentChannel?.name || 'general';
+
   if (state.messages.length === 0) {
     container.innerHTML = `
-      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-        <h2 style="color: var(--text-primary); margin-bottom: 8px;">Welcome to #${state.currentChannel?.name || 'general'}!</h2>
-        <p>This is the beginning of the channel.</p>
+      <div class="channel-intro">
+        <div class="intro-tile">#</div>
+        <h2>Welcome to #${escapeHtml(chName)}</h2>
+        <p>${escapeHtml(state.currentChannel?.description || 'The start of the channel. Squad up, share clips, and find your next match.')}</p>
       </div>
     `;
     return;
   }
 
   let html = '';
-  let lastAuthor = null;
 
   for (const msg of state.messages) {
-    const author = msg.author;
+    const author = msg.author || {};
+    const name = author.displayName || author.username || 'unknown';
     const time = new Date(msg.createdAt);
-    const showHeader = lastAuthor !== author._id;
+    const timeStr = `[${time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}]`;
+    const meta = nickMeta(author);
+    const nickColor = getNickColor(author.username || name);
 
-    if (showHeader) {
-      const timeStr = formatTime(time);
-      const avatarColor = getAvatarColor(author.username);
-
-      html += `
-        <div class="message-group">
-          <div class="message-avatar" style="background: ${avatarColor};">
-            ${author.avatar ? `<img src="${author.avatar}">` : (author.displayName || author.username)[0].toUpperCase()}
-          </div>
-          <div class="message-content">
-            <div class="message-header">
-              <span class="message-author" style="color: ${getRoleColor(author.role)};">${author.displayName || author.username}</span>
-              <span class="message-timestamp">${timeStr}</span>
-            </div>
-      `;
+    let attachments = '';
+    if (Array.isArray(msg.attachments) && msg.attachments.length) {
+      attachments = `<div class="message-attachments">` + msg.attachments.map(a => {
+        const url = a.url || a;
+        return `<div class="message-attachment" onclick="window.open('${escapeHtml(url)}','_blank')"><img src="${escapeHtml(url)}"></div>`;
+      }).join('') + `</div>`;
     }
 
-    html += `<div class="message-text">${escapeHtml(msg.content)}</div>`;
-
-    if (showHeader) {
-      html += '</div></div>';
-    }
-
-    lastAuthor = author._id;
+    html += `
+      <div class="msg-row">
+        <div class="msg-time">${timeStr}</div>
+        <div class="msg-nick">
+          ${meta.mode ? `<span class="${meta.modeClass}">${meta.mode}</span>` : ''}
+          <span class="nick" style="color:${nickColor};">${escapeHtml(name)}</span>
+          ${meta.tag ? `<span class="role-tag ${meta.tagClass}">${meta.tag}</span>` : ''}
+        </div>
+        <div class="msg-body">
+          <div class="message-text">${escapeHtml(msg.content || '')}</div>
+          ${attachments}
+        </div>
+      </div>
+    `;
   }
 
   container.innerHTML = html;
@@ -2429,156 +2520,370 @@ async function openSettings() {
     `<option value="${d.deviceId}" ${state.settings.cameraDevice === d.deviceId ? 'selected' : ''}>${escapeHtml(d.label || 'Camera ' + (state.devices.videoInputs.indexOf(d) + 1))}</option>`
   ).join('');
 
-  content.innerHTML = `
-    <div class="modal-header">
-      <h2>Settings</h2>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+  const isAdmin = state.user?.role === 'admin' || state.user?.role === 'superadmin';
+  const u = state.user || {};
+  const initials = (u.displayName || u.username || 'U').substring(0, 2).toUpperCase();
+  const accent = (label) => `<div class="settings-label">${label}</div>`;
+
+  // remove any prior takeover
+  document.querySelector('.settings-takeover')?.remove();
+
+  const toggleRow = (title, sub, on) => `
+    <div class="card-row"><div class="grow"><div class="row-title">${title}</div>${sub ? `<div class="row-sub">${sub}</div>` : ''}</div>
+      <div class="toggle ${on ? 'on' : ''}" onclick="this.classList.toggle('on')"><span class="knob"></span></div></div>`;
+
+  const bots = [
+    { id: 'youtube', name: 'YouTube', color: '#FF3D3D', letter: 'YT', cat: 'Streaming', desc: 'Queue and sync YouTube playback in any watch channel.', on: true },
+    { id: 'plex', name: 'Plex', color: '#E8A33D', letter: 'PL', cat: 'Media server', desc: 'Stream your Plex library together, perfectly in sync.', on: true },
+    { id: 'jellyfin', name: 'Jellyfin', color: '#7B5CFF', letter: 'JF', cat: 'Media server', desc: 'Open-source media server playback for the whole room.', on: true },
+    { id: 'emby', name: 'Emby', color: '#19C37D', letter: 'EM', cat: 'Media server', desc: 'Watch your Emby library with friends.', on: false },
+    { id: 'iptv', name: 'IPTV', color: '#3D7BFF', letter: 'IP', cat: 'Live TV', desc: 'Share live TV streams and channels.', on: true },
+    { id: 'twitch', name: 'Twitch', color: '#B86BFF', letter: 'TW', cat: 'Streaming', desc: 'Co-watch Twitch streams in a watch channel.', on: true },
+    { id: 'chrome', name: 'Chrome', color: '#FFB454', letter: 'CH', cat: 'Browser', desc: 'Shared browser session for anything else.', on: false },
+    { id: 'game-together', name: 'Game Together', color: '#FF6A2B', letter: 'GT', cat: 'Co-op', desc: 'Stream a game and pass virtual controllers to friends.', on: true },
+  ];
+  const enabledCount = bots.filter(b => b.on).length;
+
+  const roles = [
+    { id: 'admin', name: 'Admin', color: '#FF6A2B', count: 2 },
+    { id: 'moderator', name: 'Moderator', color: '#3D7BFF', count: 4 },
+    { id: 'streamer', name: 'Streamer', color: '#B86BFF', count: 6 },
+    { id: 'member', name: 'Member', color: '#9A938A', count: 142 },
+  ];
+
+  const nav = (group, items) => `
+    <div class="settings-nav-group">${group}</div>
+    ${items.map(it => `<button class="settings-nav-item ${it.id === 'account' ? 'active' : ''}" data-tab="${it.id}" onclick="switchSettingsTab('${it.id}')"><span class="nav-ico">${it.ico}</span><span class="nav-label">${it.label}</span></button>`).join('')}`;
+
+  const takeover = document.createElement('div');
+  takeover.className = 'settings-takeover';
+  takeover.innerHTML = `
+    <div class="settings-nav">
+      <div class="settings-nav-head"><span>Settings</span></div>
+      <div class="settings-nav-scroll">
+        ${nav('User Settings', [
+          { id: 'account', ico: '◉', label: 'Account' },
+          { id: 'profile', ico: '✦', label: 'Profile' },
+          { id: 'voice', ico: '🎙', label: 'Voice & Video' },
+          { id: 'notifications', ico: '🔔', label: 'Notifications' },
+          { id: 'appearance', ico: '◐', label: 'Appearance' },
+        ])}
+        ${nav('Server', [
+          { id: 'bots', ico: '🤖', label: 'Media Bots' },
+          { id: 'groups', ico: '⚑', label: 'Groups & Roles' },
+          { id: 'federation', ico: '◈', label: 'Federation' },
+          { id: 'channels', ico: '#', label: 'Channels' },
+          { id: 'server', ico: '⚙', label: 'Server Settings' },
+        ])}
+      </div>
+      <button class="settings-logout" onclick="disconnect()"><span>⏏</span>Log out</button>
     </div>
-    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
-      <div class="settings-section">
-        <h3>Devices</h3>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Microphone</label>
-          <button class="btn-secondary" onclick="testMicrophone()" style="padding: 8px; margin-right: 8px;">Test</button>
-          <select id="audioInputDevice" style="width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            <option value="">Default</option>
-            ${audioInputOptions}
-          </select>
-        </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Speakers</label>
-          <select id="audioOutputDevice" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            <option value="">Default</option>
-            ${audioOutputOptions}
-          </select>
-        </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Camera</label>
-          <button class="btn-secondary" onclick="testCamera()" style="padding: 8px; margin-right: 8px;">Preview</button>
-          <select id="cameraDevice" style="width: 200px; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            <option value="">Default</option>
-            ${videoInputOptions}
-          </select>
-        </div>
-        <div id="cameraPreviewContainer" style="display: none; margin-top: 12px; background: var(--bg-dark); border-radius: 8px; overflow: hidden;">
-          <video id="cameraPreview" autoplay playsinline muted style="width: 100%; max-height: 180px; transform: scaleX(-1);"></video>
-        </div>
-      </div>
 
-      <div class="settings-section">
-        <h3>Audio</h3>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Input Volume</label>
-          <input type="range" min="0" max="200" value="${state.settings.inputVolume || 100}" id="inputVolume" style="flex: 1;">
-          <span id="inputVolumeLabel" style="min-width: 45px; text-align: right;">${state.settings.inputVolume || 100}%</span>
-        </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Output Volume</label>
-          <input type="range" min="0" max="200" value="${state.settings.outputVolume || 100}" id="outputVolume" style="flex: 1;">
-          <span id="outputVolumeLabel" style="min-width: 45px; text-align: right;">${state.settings.outputVolume || 100}%</span>
-        </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Voice Mode</label>
-          <select id="voiceMode" onchange="togglePTTKeyRow()" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            <option value="ptt" ${!state.settings.voiceActivated ? 'selected' : ''}>Push to Talk</option>
-            <option value="vad" ${state.settings.voiceActivated ? 'selected' : ''}>Voice Activated</option>
-          </select>
-        </div>
-        <div class="settings-row" id="pttKeyRow" style="display: ${!state.settings.voiceActivated ? 'flex' : 'none'};">
-          <label style="min-width: 110px;">Push to Talk Key</label>
-          <small style="color: var(--text-muted); font-size: 11px;">(Works when app is focused)</small>
-          <button id="pttKeyBtn" onclick="capturePTTKey()" style="width: 200px; margin-left: auto; padding: 8px 16px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">
-            ${state.settings.pushToTalkKey || 'Click to set key'}
-          </button>
-          <input type="hidden" value="${state.settings.pushToTalkKey || ''}" id="pttKey">
-        </div>
+    <div class="settings-main">
+      <div class="settings-topbar">
+        <span class="settings-crumb" id="settingsCrumb">User Settings / <b>Account</b></span>
+        <span style="flex:1;"></span>
+        <button class="btn-accent" onclick="saveSettings()">Save changes</button>
+        <button class="modal-close" onclick="closeSettings()" style="margin-left:10px;">✕</button>
       </div>
+      <div class="settings-scroll">
 
-      <div class="settings-section">
-        <h3>Screen Sharing</h3>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Default Quality</label>
-          <select id="screenShareQuality" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-            <option value="720p" ${state.settings.screenShareQuality === '720p' ? 'selected' : ''}>720p HD (Low bandwidth)</option>
-            <option value="1080p" ${!state.settings.screenShareQuality || state.settings.screenShareQuality === '1080p' ? 'selected' : ''}>1080p Full HD (Recommended)</option>
-            <option value="1080p60" ${state.settings.screenShareQuality === '1080p60' ? 'selected' : ''}>1080p 60fps (Gaming)</option>
-            <option value="1440p" ${state.settings.screenShareQuality === '1440p' ? 'selected' : ''}>1440p QHD</option>
-            <option value="1440p60" ${state.settings.screenShareQuality === '1440p60' ? 'selected' : ''}>1440p 60fps</option>
-            <option value="4k" ${state.settings.screenShareQuality === '4k' ? 'selected' : ''}>4K Ultra HD</option>
-            <option value="4k60" ${state.settings.screenShareQuality === '4k60' ? 'selected' : ''}>4K 60fps (Premium)</option>
-            <option value="8k" ${state.settings.screenShareQuality === '8k' ? 'selected' : ''}>8K Ultra HD (Maximum)</option>
-            <option value="source" ${state.settings.screenShareQuality === 'source' ? 'selected' : ''}>Source (Native resolution)</option>
-          </select>
+        <!-- ACCOUNT -->
+        <div class="settings-pane active" id="stab-account">
+          <div class="settings-title">Account</div>
+          <div class="settings-desc">Your identity on this server and how you sign in.</div>
+          <div class="identity-card">
+            <div class="id-avatar">${u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : initials}</div>
+            <div class="id-meta">
+              <div class="id-name">${escapeHtml(u.displayName || u.username || 'User')}</div>
+              <div class="id-handle">@${escapeHtml(u.username || 'user')} · ${escapeHtml((u.role || 'member'))}</div>
+            </div>
+            <button class="btn-accent" onclick="switchSettingsTab('profile')">Edit profile</button>
+          </div>
+          <div class="grid-2">
+            <div class="field"><div class="field-label">Email</div><div class="field-value">${escapeHtml(u.email || '—')}</div></div>
+            <div class="field"><div class="field-label">Username</div><div class="field-value mono">${escapeHtml(u.username || '—')}</div></div>
+          </div>
+          ${accent('Security')}
+          <div class="section-card">
+            <div class="card-row"><div class="grow"><div class="row-title">Password</div><div class="row-sub">Sign in credential for this server</div></div><button class="btn-secondary" onclick="showToast('Use your server admin to reset passwords','info')">Change</button></div>
+            <div class="card-row"><div class="grow"><div class="row-title">Two-factor authentication</div><div class="row-sub">Add an extra layer of security</div></div><button class="btn-secondary" onclick="showToast('2FA coming soon','info')">Manage</button></div>
+            <div class="card-row"><div class="grow"><div class="row-title">Active sessions</div><div class="row-sub">Devices currently signed in</div></div><button class="btn-secondary" onclick="disconnect()">Sign out</button></div>
+          </div>
+          ${accent('<span style="color:var(--dnd-c)">Danger zone</span>')}
+          <div class="danger-card">
+            <div class="card-row"><div class="grow"><div class="row-title">Disconnect</div><div class="row-sub">Sign out of this server on this device</div></div><button class="btn-danger-outline" onclick="disconnect()">Disconnect</button></div>
+            <div class="card-row"><div class="grow"><div class="row-title">Delete account</div><div class="row-sub">Permanently remove your account and data</div></div><button class="btn-danger" onclick="showToast('Account deletion must be done by a server admin','warning')">Delete</button></div>
+          </div>
         </div>
-        <p style="color: var(--text-muted); font-size: 11px; margin-top: 8px;">Higher resolutions require more bandwidth and CPU. 4K/8K recommended only with fast connections.</p>
-      </div>
 
-      ${window.electronAPI ? `
-      <div class="settings-section">
-        <h3>Behavior</h3>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Minimize to Tray</label>
-          <input type="checkbox" ${state.settings.minimizeToTray ? 'checked' : ''} id="minimizeToTray" style="margin-left: auto;">
+        <!-- PROFILE -->
+        <div class="settings-pane" id="stab-profile">
+          <div class="settings-title">Profile</div>
+          <div class="settings-desc">How you appear to others across the network.</div>
+          <div class="profile-grid">
+            <div>
+              <div class="field"><div class="field-label">Display name</div><input type="text" id="displayName" value="${escapeHtml(u.displayName || '')}" placeholder="Your name"></div>
+              <div class="field"><div class="field-label">Pronouns</div><input type="text" id="pronouns" value="${escapeHtml(u.pronouns || '')}" placeholder="they/them"></div>
+              <div class="field"><div class="field-label">About me</div><textarea id="aboutMe" rows="3" placeholder="Tell the server about yourself">${escapeHtml(u.about || '')}</textarea></div>
+              <div class="field"><div class="field-label">Custom status</div><input type="text" id="customStatus" value="${escapeHtml(u.customStatus || '')}" placeholder="🎮 Playing Helldivers 2"></div>
+            </div>
+            <div class="profile-preview">
+              <div class="banner"></div>
+              <div class="pp-body">
+                <div class="pp-avatar">${initials}</div>
+                <div style="font-family:var(--font-display);font-weight:700;font-size:17px;margin-top:9px;">${escapeHtml(u.displayName || u.username || 'User')}</div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--ember-light);margin-top:3px;">@${escapeHtml(u.username || 'user')} · ${escapeHtml(u.role || 'member')}</div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;color:var(--txt-5);text-transform:uppercase;margin-top:14px;">Preview</div>
+              </div>
+            </div>
+          </div>
+          ${accent('Connections')}
+          <div class="conn-grid">
+            <div class="conn-card"><div class="conn-tile" style="background:#3D7BFF;">ST</div><div style="flex:1;"><div style="font:600 13.5px var(--font-ui)">Steam</div><div style="font-size:11px;color:var(--txt-4);"><input type="text" id="steamId" value="${escapeHtml(u.steamId || '')}" placeholder="Steam ID" style="background:transparent;border:none;color:var(--txt-2);font-family:var(--font-mono);font-size:12px;padding:0;width:100%;"></div></div></div>
+            <div class="conn-card"><div class="conn-tile" style="background:#B86BFF;">TW</div><div style="flex:1;"><div style="font:600 13.5px var(--font-ui)">Twitch</div><div style="font-size:11px;color:var(--txt-4);">Not connected</div></div><button class="btn-secondary" onclick="showToast('Twitch linking coming soon','info')">Link</button></div>
+          </div>
         </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Start Minimized</label>
-          <input type="checkbox" ${state.settings.startMinimized ? 'checked' : ''} id="startMinimized" style="margin-left: auto;">
-        </div>
-      </div>
-      ` : ''}
 
-      <div class="settings-section">
-        <h3>Account</h3>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Display Name</label>
-          <input type="text" value="${state.user?.displayName || ''}" id="displayName" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
+        <!-- VOICE & VIDEO -->
+        <div class="settings-pane" id="stab-voice">
+          <div class="settings-title">Voice &amp; Video</div>
+          <div class="settings-desc">Devices, input mode, and screen-share quality.</div>
+          <div class="grid-2">
+            <div class="field"><div class="field-label">Input device</div><select id="audioInputDevice"><option value="">Default microphone</option>${audioInputOptions}</select></div>
+            <div class="field"><div class="field-label">Output device</div><select id="audioOutputDevice"><option value="">Default speakers</option>${audioOutputOptions}</select></div>
+            <div class="field"><div class="field-label">Camera</div><select id="cameraDevice"><option value="">Default camera</option>${videoInputOptions}</select></div>
+            <div class="field"><div class="field-label">Screen-share quality</div><select id="screenShareQuality">
+              <option value="720p" ${state.settings.screenShareQuality === '720p' ? 'selected' : ''}>720p HD</option>
+              <option value="1080p" ${!state.settings.screenShareQuality || state.settings.screenShareQuality === '1080p' ? 'selected' : ''}>1080p Full HD</option>
+              <option value="1080p60" ${state.settings.screenShareQuality === '1080p60' ? 'selected' : ''}>1080p 60fps</option>
+              <option value="1440p" ${state.settings.screenShareQuality === '1440p' ? 'selected' : ''}>1440p QHD</option>
+              <option value="1440p60" ${state.settings.screenShareQuality === '1440p60' ? 'selected' : ''}>1440p 60fps</option>
+              <option value="4k" ${state.settings.screenShareQuality === '4k' ? 'selected' : ''}>4K Ultra HD</option>
+              <option value="4k60" ${state.settings.screenShareQuality === '4k60' ? 'selected' : ''}>4K 60fps</option>
+              <option value="8k" ${state.settings.screenShareQuality === '8k' ? 'selected' : ''}>8K</option>
+              <option value="source" ${state.settings.screenShareQuality === 'source' ? 'selected' : ''}>Source</option>
+            </select></div>
+          </div>
+          <div class="section-card pad" style="margin-top:16px;">
+            <div class="row-title">Mic test</div>
+            <div class="row-sub" style="margin-bottom:11px;">Speak and watch the input level. <a onclick="testMicrophone()" style="color:var(--ember-light);cursor:pointer;">Start test</a></div>
+            <div class="mic-meter"><div style="width:64%"></div></div>
+            <div class="vol-row"><span class="vol-label">Input vol</span><input type="range" id="inputVolume" min="0" max="200" value="${state.settings.inputVolume || 100}"><span id="inputVolumeLabel" style="font-family:var(--font-mono);font-size:11px;color:var(--txt-4);width:42px;text-align:right;">${state.settings.inputVolume || 100}%</span></div>
+            <div class="vol-row"><span class="vol-label">Output vol</span><input type="range" id="outputVolume" min="0" max="200" value="${state.settings.outputVolume || 100}"><span id="outputVolumeLabel" style="font-family:var(--font-mono);font-size:11px;color:var(--txt-4);width:42px;text-align:right;">${state.settings.outputVolume || 100}%</span></div>
+          </div>
+          <div class="card-row" style="border-top:1px solid var(--line-1);border-bottom:1px solid var(--line-1);margin-top:10px;">
+            <div class="grow"><div class="row-title">Input mode</div><div class="row-sub">Push-to-talk key: <span style="font-family:var(--font-mono);color:var(--ember-light);background:var(--bg-field);border:1px solid rgba(255,138,61,0.3);border-radius:5px;padding:1px 7px;" id="pttKeyBtn" onclick="capturePTTKey()">${state.settings.pushToTalkKey || 'set key'}</span></div></div>
+            <select id="voiceMode" onchange="togglePTTKeyRow()" style="width:auto;">
+              <option value="vad" ${state.settings.voiceActivated ? 'selected' : ''}>Voice activity</option>
+              <option value="ptt" ${!state.settings.voiceActivated ? 'selected' : ''}>Push to talk</option>
+            </select>
+            <input type="hidden" id="pttKey" value="${state.settings.pushToTalkKey || ''}">
+            <div id="pttKeyRow" style="display:none;"></div>
+          </div>
+          <div id="cameraPreviewContainer" style="display:none;margin-top:14px;background:var(--bg-card);border-radius:12px;overflow:hidden;"><video id="cameraPreview" autoplay playsinline muted style="width:100%;max-height:200px;transform:scaleX(-1);"></video></div>
+          ${window.electronAPI ? `
+          ${accent('Desktop')}
+          <div class="section-card">
+            <div class="card-row"><div class="grow"><div class="row-title">Minimize to tray</div></div><input type="checkbox" id="minimizeToTray" ${state.settings.minimizeToTray ? 'checked' : ''} style="accent-color:var(--ember);width:16px;height:16px;"></div>
+            <div class="card-row"><div class="grow"><div class="row-title">Start minimized</div></div><input type="checkbox" id="startMinimized" ${state.settings.startMinimized ? 'checked' : ''} style="accent-color:var(--ember);width:16px;height:16px;"></div>
+          </div>` : ''}
         </div>
-        <div class="settings-row">
-          <label style="min-width: 110px;">Steam ID</label>
-          <input type="text" value="${state.user?.steamId || ''}" id="steamId" style="width: 200px; margin-left: auto; padding: 8px; background: var(--bg-medium); border: 2px solid var(--bg-light); border-radius: var(--radius-sm); color: var(--text-primary);">
-        </div>
-      </div>
 
-      ${state.user?.role === 'admin' || state.user?.role === 'superadmin' ? `
-      <div class="settings-section">
-        <h3>Administration</h3>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn-secondary" onclick="state.previousModal='settings'; openInviteModal()">Create Invite</button>
-          <button class="btn-secondary" onclick="state.previousModal='settings'; openCreateUserModal()">Create User</button>
-          <button class="btn-secondary" onclick="state.previousModal='settings'; openAdminPanel()">Manage Users</button>
-          <button class="btn-secondary" onclick="state.previousModal='settings'; openGroupsModal()">Groups</button>
-          <button class="btn-secondary" onclick="state.previousModal='settings'; openFederationModal()">Federation</button>
+        <!-- NOTIFICATIONS -->
+        <div class="settings-pane" id="stab-notifications">
+          <div class="settings-title">Notifications</div>
+          <div class="settings-desc">Choose what reaches you, and how.</div>
+          ${accent('Notify me about')}
+          <div class="section-card">
+            ${toggleRow('Direct messages', 'Private 1:1 conversations', true)}
+            ${toggleRow('@mentions', 'When someone pings you', true)}
+            ${toggleRow('All messages', 'Every message in every channel', false)}
+            ${toggleRow('Voice activity', 'When friends join voice', true)}
+            ${toggleRow('Server events', 'Joins, role changes, etc.', false)}
+            ${toggleRow('Bot embeds', 'Watch-together and media bots', true)}
+          </div>
+          ${accent('Delivery')}
+          <div class="section-card">
+            ${toggleRow('Desktop notifications', '', true)}
+            ${toggleRow('Notification sounds', '', true)}
+            ${toggleRow('Mobile push', '', true)}
+            ${toggleRow('Quiet hours', '10pm – 8am', false)}
+          </div>
         </div>
-        <h4 style="margin-top: 16px; color: var(--text-muted);">Media Bots</h4>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button class="btn-secondary" onclick="openAdminBotModal('youtube')">YouTube</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('plex')">Plex</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('emby')">Emby</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('jellyfin')">Jellyfin</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('iptv')">IPTV</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('chrome')">Chrome</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('twitch')">Twitch</button>
-          <button class="btn-secondary" onclick="openAdminBotModal('game-together')">Game Together</button>
+
+        <!-- APPEARANCE -->
+        <div class="settings-pane" id="stab-appearance">
+          <div class="settings-title">Appearance</div>
+          <div class="settings-desc">Ember is dark by nature — tune the shade and the accent.</div>
+          ${accent('Theme')}
+          <div class="theme-grid">
+            <div class="theme-card ${state.theme === 'dark' ? 'active' : ''}" onclick="setTheme('dark'); refreshThemeCards();" data-theme="dark"><div class="swatch" style="background:#0C0B0A;"><span class="dot"></span><span class="bar"></span></div><div class="t-name">Ember Dark</div><div class="t-sub">Warm near-black</div></div>
+            <div class="theme-card ${state.theme === 'midnight' ? 'active' : ''}" onclick="setTheme('midnight'); refreshThemeCards();" data-theme="midnight"><div class="swatch" style="background:#0d1016;"><span class="dot"></span><span class="bar"></span></div><div class="t-name">Midnight</div><div class="t-sub">Cool blue-black</div></div>
+            <div class="theme-card ${state.theme === 'amoled' ? 'active' : ''}" onclick="setTheme('amoled'); refreshThemeCards();" data-theme="amoled"><div class="swatch" style="background:#000;"><span class="dot"></span><span class="bar"></span></div><div class="t-name">AMOLED</div><div class="t-sub">Pure black</div></div>
+          </div>
+          <div class="card-row" style="border-top:1px solid var(--line-1);border-bottom:1px solid var(--line-1);">
+            <div class="grow"><div class="row-title">Accent color</div><div class="row-sub">Drives buttons, active states, and the ember glow</div></div>
+            <div class="accent-swatches">
+              <span class="active" style="background:#FF6A2B;"></span><span style="background:#FF8A3D;"></span><span style="background:#E8551F;"></span><span style="background:#FFB454;"></span><span style="background:#FF3D3D;"></span>
+            </div>
+          </div>
+          <div class="card-row" style="border-bottom:1px solid var(--line-1);">
+            <div class="grow"><div class="row-title">Message density</div><div class="row-sub">Compact mirrors the classic IRC log</div></div>
+            <div class="segmented"><span onclick="this.parentElement.querySelectorAll('span').forEach(s=>s.classList.remove('active'));this.classList.add('active')">Cozy</span><span class="active" onclick="this.parentElement.querySelectorAll('span').forEach(s=>s.classList.remove('active'));this.classList.add('active')">Compact</span></div>
+          </div>
+          ${accent('Display')}
+          <div class="section-card">
+            ${toggleRow('24-hour timestamps', '', true)}
+            ${toggleRow('Show avatars', '', true)}
+            ${toggleRow('Reduce motion', '', false)}
+            ${toggleRow('Underline links', '', false)}
+          </div>
         </div>
+
+        <!-- MEDIA BOTS -->
+        <div class="settings-pane" id="stab-bots">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px;">
+            <div class="settings-title">8 built-in bots <span style="color:var(--txt-4);font-weight:400;font-size:15px;">· no subscriptions</span></div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--on);">${enabledCount} enabled</div>
+          </div>
+          <div class="settings-desc">Enable a bot, set permissions per group, and toggle availability per channel.</div>
+          <div class="bots-grid">
+            ${bots.map(b => `
+              <div class="bot-card ${b.on ? 'enabled' : ''}">
+                <div class="bot-head">
+                  <div class="bot-tile" style="background:${b.color};">${b.letter}</div>
+                  <div style="flex:1;min-width:0;"><div class="bot-name">${b.name}</div><div class="bot-cat">${b.cat}</div></div>
+                  <div class="toggle ${b.on ? 'on' : ''}" onclick="this.classList.toggle('on')"><span class="knob"></span></div>
+                </div>
+                <div class="bot-desc">${b.desc}</div>
+                <div class="bot-foot">
+                  <span class="bot-status ${b.on ? 'on' : ''}">${b.on ? '● enabled' : '○ disabled'}</span>
+                  <span class="bot-config" onclick="${isAdmin ? `openAdminBotModal('${b.id}')` : `showToast('Only admins can configure bots','info')`}">Configure →</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <!-- GROUPS & ROLES -->
+        <div class="settings-pane" id="stab-groups">
+          <div class="settings-title">Groups &amp; Roles</div>
+          <div class="settings-desc">Define roles and what each can do on this server.</div>
+          <div class="roles-grid">
+            <div class="role-list">
+              ${roles.map((r, i) => `<div class="role-item ${i === 0 ? 'active' : ''}"><span class="role-dot" style="background:${r.color};"></span><span class="role-name">${r.name}</span><span class="role-count">${r.count}</span></div>`).join('')}
+              <button class="btn-secondary" style="margin-top:6px;" onclick="${isAdmin ? 'openGroupsModal()' : `showToast('Only admins can manage roles','info')`}">+ Manage roles</button>
+            </div>
+            <div class="section-card pad">
+              <div class="row-title" style="margin-bottom:10px;">Permissions</div>
+              ${toggleRow('Manage server', '', true)}
+              ${toggleRow('Manage channels', '', true)}
+              ${toggleRow('Kick members', '', true)}
+              ${toggleRow('Ban members', '', true)}
+              ${toggleRow('Manage messages', '', true)}
+              ${toggleRow('Mute / move in voice', '', true)}
+            </div>
+          </div>
+        </div>
+
+        <!-- FEDERATION -->
+        <div class="settings-pane" id="stab-federation">
+          <div class="settings-title">Federation</div>
+          <div class="settings-desc">Link servers into an Ember network with real-time sync.</div>
+          <div class="section-card pad">
+            <div class="row-title" style="margin-bottom:6px;">Linked servers</div>
+            <div class="row-sub" style="margin-bottom:12px;">Manage which servers share channels, presence and messages.</div>
+            <button class="btn-accent" onclick="${isAdmin ? 'openFederationModal()' : `showToast('Only admins can manage federation','info')`}">Open federation manager</button>
+          </div>
+          ${accent('Trust &amp; sync')}
+          <div class="section-card">
+            ${toggleRow('Auto-accept sync', 'Trust linked servers automatically', true)}
+            ${toggleRow('Share presence', 'Show your status network-wide', true)}
+            ${toggleRow('Federated voice', 'Allow cross-server voice rooms', false)}
+          </div>
+        </div>
+
+        <!-- CHANNELS -->
+        <div class="settings-pane" id="stab-channels">
+          <div class="settings-title">Channels</div>
+          <div class="settings-desc">Create and organize text, voice and watch channels.</div>
+          <div class="section-card pad">
+            <div class="row-title" style="margin-bottom:6px;">Channel management</div>
+            <div class="row-sub" style="margin-bottom:12px;">Add categories and channels, reorder, and set per-channel options.</div>
+            <button class="btn-accent" onclick="${isAdmin ? 'openCreateChannelModal()' : `showToast('Only admins can manage channels','info')`}">+ Create channel</button>
+          </div>
+          <div class="section-card" id="settingsChannelList"></div>
+        </div>
+
+        <!-- SERVER SETTINGS -->
+        <div class="settings-pane" id="stab-server">
+          <div class="settings-title">Server Settings</div>
+          <div class="settings-desc">Identity, invites and maintenance for this server.</div>
+          <div class="grid-2">
+            <div class="field"><div class="field-label">Server name</div><div class="field-value">${escapeHtml(state.servers.find(s => s.id === state.currentServerId)?.name || 'F7Lans')}</div></div>
+            <div class="field"><div class="field-label">Version</div><div class="field-value mono">v1.0.0</div></div>
+          </div>
+          ${accent('Invites')}
+          <div class="section-card pad">
+            <div class="row-title" style="margin-bottom:6px;">Invite people</div>
+            <div class="row-sub" style="margin-bottom:12px;">Generate an invite link or code for new members.</div>
+            <button class="btn-accent" onclick="${isAdmin ? 'openInviteModal()' : `showToast('Only admins can create invites','info')`}">Create invite</button>
+            ${isAdmin ? `<button class="btn-secondary" style="margin-left:8px;" onclick="openCreateUserModal()">Create user</button><button class="btn-secondary" style="margin-left:8px;" onclick="openAdminPanel()">Manage users</button>` : ''}
+          </div>
+          ${accent('<span style="color:var(--dnd-c)">Danger zone</span>')}
+          <div class="danger-card">
+            <div class="card-row"><div class="grow"><div class="row-title">Restart server stack</div><div class="row-sub">Handled by your deployer / host</div></div><button class="btn-danger-outline" onclick="showToast('Restart from your host (docker compose restart)','info')">Info</button></div>
+          </div>
+        </div>
+
       </div>
-      ` : ''}
-    </div>
-    <div class="modal-footer">
-      <button class="btn-danger" onclick="disconnect()">Disconnect</button>
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveSettings()">Save</button>
     </div>
   `;
 
-  // Set up volume label updates
-  document.getElementById('inputVolume').addEventListener('input', (e) => {
-    document.getElementById('inputVolumeLabel').textContent = e.target.value + '%';
-  });
-  document.getElementById('outputVolume').addEventListener('input', (e) => {
-    document.getElementById('outputVolumeLabel').textContent = e.target.value + '%';
-  });
+  document.body.appendChild(takeover);
 
-  modal.classList.add('active');
+  // Volume label updates
+  const inV = document.getElementById('inputVolume');
+  const outV = document.getElementById('outputVolume');
+  inV?.addEventListener('input', (e) => { document.getElementById('inputVolumeLabel').textContent = e.target.value + '%'; });
+  outV?.addEventListener('input', (e) => { document.getElementById('outputVolumeLabel').textContent = e.target.value + '%'; });
+
+  // Populate the channels list inside settings
+  renderSettingsChannelList();
+}
+
+// Switch the active settings panel
+const SETTINGS_META = {
+  account: ['User Settings', 'Account'], profile: ['User Settings', 'Profile'],
+  voice: ['User Settings', 'Voice & Video'], notifications: ['User Settings', 'Notifications'],
+  appearance: ['User Settings', 'Appearance'], bots: ['Server', 'Media Bots'],
+  groups: ['Server', 'Groups & Roles'], federation: ['Server', 'Federation'],
+  channels: ['Server', 'Channels'], server: ['Server', 'Server Settings'],
+};
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-pane').forEach(p => p.classList.toggle('active', p.id === `stab-${tab}`));
+  document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const crumb = document.getElementById('settingsCrumb');
+  const meta = SETTINGS_META[tab];
+  if (crumb && meta) crumb.innerHTML = `${meta[0]} / <b>${meta[1]}</b>`;
+  const scroll = document.querySelector('.settings-scroll');
+  if (scroll) scroll.scrollTop = 0;
+}
+function closeSettings() {
+  document.querySelector('.settings-takeover')?.remove();
+}
+function refreshThemeCards() {
+  document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.theme === state.theme));
+}
+function renderSettingsChannelList() {
+  const el = document.getElementById('settingsChannelList');
+  if (!el) return;
+  const chans = state.channels || [];
+  if (!chans.length) { el.innerHTML = '<div class="card-row"><div class="row-sub">No channels yet.</div></div>'; return; }
+  el.innerHTML = chans.map(c => {
+    const isVoice = ['voice', 'video'].includes(c.type);
+    return `<div class="card-row"><span style="color:var(--txt-5);width:18px;text-align:center;font-family:var(--font-mono);">${isVoice ? '🔊' : '#'}</span><div class="grow"><div class="row-title" style="font-family:var(--font-mono);font-size:13px;">${escapeHtml(c.name)}</div></div><span class="row-sub">${escapeHtml(c.category || 'General')}</span></div>`;
+  }).join('');
 }
 
 // Enumerate available media devices
@@ -2701,8 +3006,16 @@ async function saveSettings() {
   }
 
   // Save profile updates
-  const displayName = document.getElementById('displayName').value;
-  const steamId = document.getElementById('steamId').value;
+  const displayName = document.getElementById('displayName')?.value ?? state.user?.displayName ?? '';
+  const steamId = document.getElementById('steamId')?.value ?? state.user?.steamId ?? '';
+  const pronouns = document.getElementById('pronouns')?.value;
+  const about = document.getElementById('aboutMe')?.value;
+  const customStatus = document.getElementById('customStatus')?.value;
+
+  const profileBody = { displayName, steamId };
+  if (pronouns !== undefined) profileBody.pronouns = pronouns;
+  if (about !== undefined) profileBody.about = about;
+  if (customStatus !== undefined) profileBody.customStatus = customStatus;
 
   try {
     await fetch(`${state.serverUrl}/api/auth/profile`, {
@@ -2711,15 +3024,21 @@ async function saveSettings() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ displayName, steamId })
+      body: JSON.stringify(profileBody)
     });
 
-    state.user.displayName = displayName;
-    state.user.steamId = steamId;
+    if (state.user) {
+      state.user.displayName = displayName;
+      state.user.steamId = steamId;
+      if (pronouns !== undefined) state.user.pronouns = pronouns;
+      if (about !== undefined) state.user.about = about;
+      if (customStatus !== undefined) state.user.customStatus = customStatus;
+    }
   } catch (error) {
     console.error('Failed to update profile:', error);
   }
 
+  closeSettings();
   closeModal();
   showToast('Settings saved', 'success');
   renderMainApp();
@@ -5475,25 +5794,120 @@ function formatTime(date) {
 
 function getAvatarColor(name) {
   const colors = [
-    'linear-gradient(135deg, #ff8c00, #ff6b00)',
-    'linear-gradient(135deg, #ff6b6b, #ff8e53)',
-    'linear-gradient(135deg, #4ecdc4, #44a08d)',
-    'linear-gradient(135deg, #667eea, #764ba2)',
-    'linear-gradient(135deg, #4facfe, #00f2fe)'
+    'linear-gradient(135deg, #FF8A3D, #E8551F)',
+    'linear-gradient(135deg, #3D7BFF, #2A5BD0)',
+    'linear-gradient(135deg, #19C37D, #128A5A)',
+    'linear-gradient(135deg, #B86BFF, #8A3DE8)',
+    'linear-gradient(135deg, #E8A33D, #C77F1F)'
   ];
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
+  for (let i = 0; i < (name || '').length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
 }
 
+// Solid server-identity color for rail tiles (Ember orange / blue / green / purple / amber)
+function getServerColor(server, index = 0) {
+  const palette = ['#FF6A2B', '#3D7BFF', '#19C37D', '#B86BFF', '#E8A33D'];
+  const key = server?.name || String(index);
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
+  // first/current server keeps the Ember orange
+  if (index === 0) return '#FF6A2B';
+  return palette[Math.abs(hash) % palette.length];
+}
+
 function getRoleColor(role) {
   switch (role) {
-    case 'superadmin': return '#ff8c00';
-    case 'admin': return '#ff6b6b';
-    default: return '#ffffff';
+    case 'superadmin': return '#FF6A2B';
+    case 'admin': return '#FF8A3D';
+    case 'moderator': return '#3D7BFF';
+    default: return '#D7D0C6';
   }
+}
+
+// Home coal → jump to Direct Messages section
+function goHome() {
+  const dm = document.getElementById('dmSection');
+  if (dm) dm.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Toggle the members panel (chat only)
+function toggleMembers() {
+  const app = document.getElementById('mainApp');
+  const btn = document.getElementById('membersToggleBtn');
+  if (!app) return;
+  const showing = app.classList.toggle('members-active');
+  const panel = document.getElementById('membersPanel');
+  if (panel) panel.style.display = showing ? 'flex' : 'none';
+  if (btn) btn.classList.toggle('active', showing);
+  if (showing) renderMembers();
+}
+// alias kept for any older callers
+function showMembers() { toggleMembers(); }
+
+// Render the members panel, grouped by IRC mode (Ops / Voiced / Online / Offline)
+function renderMembers() {
+  const list = document.getElementById('membersList');
+  if (!list) return;
+
+  // Best-effort member source: channel members, voice participants, or known users.
+  const members = (state.channelMembers && state.channelMembers.length)
+    ? state.channelMembers
+    : (state.onlineUsers || []);
+
+  // Always include self so the panel is never empty.
+  const self = state.user ? [{
+    username: state.user.username,
+    displayName: state.user.displayName || state.user.username,
+    role: state.user.role,
+    presence: 'online',
+    activity: state.user.customStatus || ''
+  }] : [];
+
+  const all = [...self, ...members.filter(m => m.username !== state.user?.username)];
+
+  const groups = { ops: [], voiced: [], online: [], offline: [] };
+  for (const m of all) {
+    const role = m.role || 'member';
+    if (role === 'admin' || role === 'superadmin' || role === 'moderator') groups.ops.push(m);
+    else if (m.voiced) groups.voiced.push(m);
+    else if ((m.presence || 'online') === 'offline') groups.offline.push(m);
+    else groups.online.push(m);
+  }
+
+  const modeFor = (g) => g === 'ops' ? '@' : g === 'voiced' ? '+' : '';
+  const modeClass = (g) => g === 'ops' ? 'mode-op' : g === 'voiced' ? 'mode-voice' : '';
+
+  const renderGroup = (label, key) => {
+    const arr = groups[key];
+    if (!arr.length) return '';
+    return `<div class="members-group">${label} — ${arr.length}</div>` + arr.map(m => {
+      const name = m.displayName || m.username || 'user';
+      const presence = key === 'offline' ? 'offline' : (m.presence || 'online');
+      const initials = name.substring(0, 2).toUpperCase();
+      const activity = m.activity || '';
+      const mode = modeFor(key);
+      return `
+        <div class="member-row ${key === 'offline' ? 'offline' : ''}">
+          <div class="member-avatar" style="background:${getAvatarColor(name)};">
+            ${initials}
+            <div class="status-indicator ${presence}"></div>
+          </div>
+          <div class="member-meta">
+            <div class="member-nick">${mode ? `<span class="${modeClass(key)}">${mode}</span>` : ''}<span class="nick">${escapeHtml(name)}</span></div>
+            ${activity ? `<div class="member-activity">${escapeHtml(activity)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  };
+
+  list.innerHTML =
+    renderGroup('Ops', 'ops') +
+    renderGroup('Voiced', 'voiced') +
+    renderGroup('Online', 'online') +
+    renderGroup('Offline', 'offline');
 }
 
 // ==================== Multi-Server Support ====================
@@ -5693,41 +6107,60 @@ function openServerMenu(event) {
 // ==================== Theming System ====================
 const themes = {
   dark: {
-    name: 'Dark',
+    name: 'Ember Dark',
     vars: {
-      '--bg-darkest': '#1a1a2e',
-      '--bg-darker': '#1e1e32',
-      '--bg-dark': '#252538',
-      '--bg-medium': '#2a2a42',
-      '--bg-light': '#32324a',
-      '--bg-lighter': '#3a3a52',
-      '--text-primary': '#ffffff',
-      '--text-secondary': '#b3b3b3',
-      '--text-muted': '#72727e',
-      '--accent-primary': '#ff8c00',
-      '--accent-secondary': '#ff6b00',
-      '--success': '#4ecdc4',
-      '--danger': '#ff6b6b',
-      '--warning': '#ffd93d'
+      '--bg-darkest': '#0A0908',
+      '--bg-darker': '#100E0C',
+      '--bg-dark': '#13110E',
+      '--bg-medium': '#1A1714',
+      '--bg-light': '#2A2621',
+      '--bg-lighter': '#3a352e',
+      '--text-primary': '#F4EFE8',
+      '--text-secondary': '#D7D0C6',
+      '--text-muted': '#9A938A',
+      '--accent-primary': '#FF6A2B',
+      '--accent-secondary': '#FF8A3D',
+      '--success': '#4FCB6B',
+      '--danger': '#F2554D',
+      '--warning': '#FFB454'
     }
   },
   midnight: {
-    name: 'Midnight Blue',
+    name: 'Midnight',
     vars: {
-      '--bg-darkest': '#0d1117',
-      '--bg-darker': '#161b22',
-      '--bg-dark': '#21262d',
-      '--bg-medium': '#30363d',
-      '--bg-light': '#484f58',
-      '--bg-lighter': '#6e7681',
-      '--text-primary': '#f0f6fc',
-      '--text-secondary': '#8b949e',
-      '--text-muted': '#6e7681',
-      '--accent-primary': '#58a6ff',
-      '--accent-secondary': '#1f6feb',
-      '--success': '#3fb950',
-      '--danger': '#f85149',
-      '--warning': '#d29922'
+      '--bg-darkest': '#080a0f',
+      '--bg-darker': '#0d1016',
+      '--bg-dark': '#11151d',
+      '--bg-medium': '#1a1f29',
+      '--bg-light': '#262c38',
+      '--bg-lighter': '#39404e',
+      '--text-primary': '#F4EFE8',
+      '--text-secondary': '#cdd3dd',
+      '--text-muted': '#8c93a0',
+      '--accent-primary': '#FF6A2B',
+      '--accent-secondary': '#FF8A3D',
+      '--success': '#4FCB6B',
+      '--danger': '#F2554D',
+      '--warning': '#FFB454'
+    }
+  },
+  amoled: {
+    name: 'AMOLED',
+    vars: {
+      '--bg-darkest': '#000000',
+      '--bg-darker': '#040403',
+      '--bg-dark': '#090806',
+      '--bg-medium': '#121110',
+      '--bg-light': '#1f1d1a',
+      '--bg-lighter': '#2c2925',
+      '--text-primary': '#F4EFE8',
+      '--text-secondary': '#D7D0C6',
+      '--text-muted': '#9A938A',
+      '--accent-primary': '#FF6A2B',
+      '--accent-secondary': '#FF8A3D',
+      '--success': '#4FCB6B',
+      '--danger': '#F2554D',
+      '--warning': '#FFB454'
     }
   },
   forest: {

@@ -276,6 +276,7 @@ deploy:linux:
     - cp -r electron-client/dist/* /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
     - cp -r electron-client/dist/unified/* /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
     - cp -r f7lans-server-*.tar.gz /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+    - chmod -R 755 /mnt/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
@@ -314,6 +315,7 @@ deploy:macos:
     - mount_smbfs //root:gitlab@192.168.100.22/releases /tmp/releases
     - mkdir -p /tmp/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME
     - cp -r electron-client/dist/* /tmp/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/ || true
+    - chmod -R 755 /tmp/releases/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME/
     - umount /tmp/releases
   rules:
     - if: $CI_COMMIT_TAG

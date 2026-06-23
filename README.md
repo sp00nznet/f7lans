@@ -43,6 +43,44 @@
 
 ---
 
+## 🔥 Ember — UI redesign (in progress)
+
+The web client is being redesigned to **Ember**: a dark-first, gamer night-mode look
+(orange embers on warm near-black) with an **IRC-flavored** information layer — bracketed
+monospace timestamps, `@`/`+` user modes, monospace channel names, terminal-style server
+addresses. Full spec and reference screenshots live in
+[`design_ref/design_handoff_ember/`](design_ref/design_handoff_ember/).
+
+**Done (web client — `client/public/`, served by the webclient container):**
+- Ember design system in `styles.css` — tokens, Space Grotesk / Hanken Grotesk / JetBrains
+  Mono, glows, animations, and reusable primitives (toggles, fields, cards, segmented
+  controls, pills). Default `dark` theme remapped to **Ember Dark**; added **Midnight** and
+  **AMOLED**.
+- **Login / Server Picker** — Ember hero + connect panel with terminal `ssl://` address
+  field; real username/password + Google sign-in preserved; recent-servers list.
+- **App shell** — 74px server rail (coal home, `NET` label, colored 2-letter tiles with
+  active gutter-tick/glow + unread badges, explore), 248px channel sidebar (search, mono
+  sections, user counts), IRC chat header (topic + federation pill + members toggle), and
+  the Ember composer (`[#channel]` mono prefix).
+- **Chat** — IRC 3-column `[time][nick][body]` grid with `@`/`+` modes, colored nicks,
+  role/bot tags, gutter rule, bot embeds, typing indicator, channel intro.
+- **Members panel** — Ops / Voiced / Online / Offline grouping with presence dots.
+- **Direct Messages** — Ember DM list and IRC-grid E2E conversation view.
+- **Voice / Video** — quality indicator, featured-share layout, ember participant tiles,
+  control bar.
+- **Settings** — full-takeover nav + all 10 panels (Account, Profile, Voice & Video,
+  Notifications, Appearance, Media Bots, Groups & Roles, Federation, Channels, Server).
+- **Mobile** — responsive collapse of the multi-column shell and IRC grid.
+
+**Pending:**
+- **Electron desktop + mobile clients** still render the old UI. They build from
+  `electron-client/renderer/` — a *diverged fork* (its own Spotify / RPG / Image-Search /
+  Activity-Stats bots and Google-auth flow that the web client lacks), so the redesign must
+  be **ported in place**, preserving those extra features — it cannot be copied over from
+  `client/public/`.
+
+---
+
 ## What is F7Lans?
 
 **F7Lans** is a fully-featured, self-hosted alternative to Discord built specifically for gaming communities. Run your own server, keep your data private, and enjoy features that would cost money elsewhere — completely free.
